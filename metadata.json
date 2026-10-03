@@ -1,0 +1,6 @@
+{
+  "name": "Tour Manage",
+  "description": "Customer marketplace app for discovering and booking tour packages across India.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
