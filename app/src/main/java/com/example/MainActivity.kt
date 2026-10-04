@@ -306,7 +306,11 @@ fun TourManageApp(
             composable(Screen.Auth.route) {
                 AuthScreen(
                     authRepo = authRepository,
-                    onAuthSuccess = { navController.popBackStack() },
+                    onAuthSuccess = {
+                        navController.navigate(Screen.Profile.route) {
+                            popUpTo(Screen.Home.route)
+                        }
+                    },
                     onContinueAsGuest = { navController.popBackStack() }
                 )
             }

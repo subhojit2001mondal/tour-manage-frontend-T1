@@ -60,6 +60,21 @@ fun HomeScreen(
     val wishlist by repository.wishlist.collectAsState()
     val notifications by repository.notifications.collectAsState()
     val firestoreError by repository.firestoreError.collectAsState()
+    val currentUser by repository.authRepo.currentUser.collectAsState()
+    val customerProfile by repository.authRepo.customerProfile.collectAsState()
+
+    val userInitials = remember(customerProfile, currentUser) {
+        val name = customerProfile?.name?.ifBlank { null }
+            ?: currentUser?.displayName?.ifBlank { null }
+            ?: currentUser?.email?.substringBefore("@")
+            ?: "T"
+        val parts = name.trim().split("\\s+".toRegex())
+        if (parts.size >= 2) {
+            "${parts[0].take(1)}${parts[1].take(1)}".uppercase()
+        } else {
+            name.take(2).uppercase()
+        }
+    }
 
     val unreadNotifCount = remember(notifications) { notifications.count { !it.isRead } }
 
@@ -239,12 +254,29 @@ fun HomeScreen(
                         }
                     }
 
-                    // Profile icon
+                    // Profile icon / avatar in top bar
                     IconButton(
                         onClick = onNavigateToProfile,
                         modifier = Modifier.testTag("profile_button")
                     ) {
-                        Icon(Icons.Outlined.AccountCircle, contentDescription = "Profile")
+                        if (currentUser != null) {
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.primary,
+                                contentColor = Color.White,
+                                modifier = Modifier.size(30.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(
+                                        text = userInitials,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp
+                                    )
+                                }
+                            }
+                        } else {
+                            Icon(Icons.Outlined.AccountCircle, contentDescription = "Profile")
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)

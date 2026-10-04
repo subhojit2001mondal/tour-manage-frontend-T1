@@ -1,6 +1,7 @@
 package com.example.ui.screens.profile
 
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -48,6 +49,21 @@ fun ProfileScreen(
     val notifPrefs by tourRepo.notificationPreferences.collectAsState()
 
     val unreadCount = remember(notifications) { notifications.count { !it.isRead } }
+    val firestoreSaveState by authRepo.firestoreSaveState.collectAsState()
+    val customerDocExists by authRepo.customerDocExists.collectAsState()
+
+    val initials = remember(profile?.name, currentUser?.displayName, currentUser?.email) {
+        val rawName = profile?.name?.ifBlank { null }
+            ?: currentUser?.displayName?.ifBlank { null }
+            ?: currentUser?.email?.substringBefore("@")
+            ?: "T"
+        val parts = rawName.trim().split("\\s+".toRegex()).filter { it.isNotBlank() }
+        if (parts.size >= 2) {
+            "${parts[0].take(1)}${parts[1].take(1)}".uppercase()
+        } else {
+            rawName.take(2).uppercase()
+        }
+    }
 
     var isEditing by remember { mutableStateOf(false) }
     var editName by remember(profile) { mutableStateOf(profile?.name ?: "") }
@@ -56,7 +72,28 @@ fun ProfileScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Profile & Settings", fontWeight = FontWeight.Bold) },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (currentUser != null) {
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.primary,
+                                contentColor = Color.White,
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(
+                                        text = initials,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                        }
+                        Text("Profile & Settings", fontWeight = FontWeight.Bold)
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -140,12 +177,12 @@ fun ProfileScreen(
                         ) {
                             Icon(Icons.Default.Login, contentDescription = null)
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Log In or Sign Up with Google")
+                            Text("Log In or Sign Up")
                         }
                     }
                 }
             } else {
-                // Logged in user header with avatar
+                // Logged in user header with avatar (initials) and green "Logged in" chip
                 item {
                     Column(
                         modifier = Modifier.fillMaxWidth(),
@@ -153,8 +190,10 @@ fun ProfileScreen(
                     ) {
                         Surface(
                             shape = CircleShape,
-                            color = MaterialTheme.colorScheme.primaryContainer,
-                            modifier = Modifier.size(80.dp)
+                            color = MaterialTheme.colorScheme.primary,
+                            contentColor = Color.White,
+                            modifier = Modifier.size(84.dp),
+                            shadowElevation = 2.dp
                         ) {
                             val photoUrl = currentUser?.photoUrl?.toString()
                             if (!photoUrl.isNullOrBlank()) {
@@ -166,12 +205,11 @@ fun ProfileScreen(
                                 )
                             } else {
                                 Box(contentAlignment = Alignment.Center) {
-                                    val initials = (profile?.name?.take(1) ?: currentUser?.displayName?.take(1) ?: "T").uppercase()
                                     Text(
                                         text = initials,
                                         fontSize = 32.sp,
                                         fontWeight = FontWeight.ExtraBold,
-                                        color = MaterialTheme.colorScheme.primary
+                                        color = Color.White
                                     )
                                 }
                             }
@@ -190,6 +228,152 @@ fun ProfileScreen(
                             fontSize = 13.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+
+                        if (!profile?.phone.isNullOrBlank()) {
+                            Text(
+                                text = "+91 ${profile?.phone}",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        // Green "Logged in" chip as requested
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = Color(0xFFDCFCE7),
+                            contentColor = Color(0xFF15803D),
+                            border = BorderStroke(1.dp, Color(0xFF86EFAC)),
+                            modifier = Modifier.testTag("logged_in_chip")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .background(Color(0xFF16A34A), CircleShape)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Logged in",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Database Persistence Status Banner (Requirement 4)
+                item {
+                    val isSaved = customerDocExists || firestoreSaveState is com.example.data.repository.FirestoreCustomerSaveState.Saved
+                    val isError = firestoreSaveState is com.example.data.repository.FirestoreCustomerSaveState.Error
+                    val isSaving = firestoreSaveState is com.example.data.repository.FirestoreCustomerSaveState.Saving
+
+                    if (isSaved) {
+                        Card(
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFFF0FDF4)),
+                            border = BorderStroke(1.dp, Color(0xFF86EFAC)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("saved_in_database_card")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CheckCircle,
+                                    contentDescription = null,
+                                    tint = Color(0xFF16A34A),
+                                    modifier = Modifier.size(24.dp)
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text(
+                                        text = "Saved in database ✓",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp,
+                                        color = Color(0xFF15803D)
+                                    )
+                                    Text(
+                                        text = "Stored at customers/${currentUser?.uid} in named database",
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF166534)
+                                    )
+                                }
+                            }
+                        }
+                    } else if (isError) {
+                        val errMsg = (firestoreSaveState as com.example.data.repository.FirestoreCustomerSaveState.Error).message
+                        Card(
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f)
+                            ),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.error),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("database_save_failed_card")
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Warning,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "Logged in, but saving to the database failed",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp,
+                                        color = MaterialTheme.colorScheme.error
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = errMsg,
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Button(
+                                    onClick = { authRepo.retrySaveCustomerToFirestore() },
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                                ) {
+                                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Retry Save to Database")
+                                }
+                            }
+                        }
+                    } else if (isSaving) {
+                        Card(
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                            border = CardDefaults.outlinedCardBorder(),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text(
+                                    text = "Saving customer to database...",
+                                    fontSize = 13.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
                     }
                 }
 

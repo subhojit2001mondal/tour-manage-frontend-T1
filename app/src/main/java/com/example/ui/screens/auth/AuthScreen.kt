@@ -30,6 +30,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.repository.AuthRepository
+import com.example.data.repository.ENABLE_GOOGLE_SIGNIN
 import com.example.ui.components.ErrorBanner
 import com.example.ui.theme.TourNavy
 import kotlinx.coroutines.launch
@@ -145,65 +146,68 @@ fun AuthScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // PRIMARY "CONTINUE WITH GOOGLE" BUTTON
-            Button(
-                onClick = {
-                    statusNotice = null
-                    scope.launch {
-                        isLoading = true
-                        val res = authRepo.signInWithGoogle(context)
-                        isLoading = false
-                        if (res.isSuccess) {
-                            Toast.makeText(context, "Welcome to Tour Manage!", Toast.LENGTH_SHORT).show()
-                            // Handled by LaunchedEffect
+            if (ENABLE_GOOGLE_SIGNIN) {
+                // PRIMARY "CONTINUE WITH GOOGLE" BUTTON
+                Button(
+                    onClick = {
+                        statusNotice = null
+                        scope.launch {
+                            isLoading = true
+                            val res = authRepo.signInWithGoogle(context)
+                            isLoading = false
+                            if (res.isSuccess) {
+                                val user = res.getOrNull()
+                                val emailText = user?.email ?: "User"
+                                Toast.makeText(context, "Logged in as $emailText", Toast.LENGTH_SHORT).show()
+                                onAuthSuccess()
+                            }
                         }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp)
+                        .testTag("google_signin_button"),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = MaterialTheme.colorScheme.onSurface
+                    ),
+                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 1.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.AccountCircle,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = "Continue with Google",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
+                        )
                     }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(50.dp)
-                    .testTag("google_signin_button"),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    contentColor = MaterialTheme.colorScheme.onSurface
-                ),
-                elevation = ButtonDefaults.buttonElevation(defaultElevation = 1.dp)
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    // Google icon symbol
-                    Icon(
-                        imageVector = Icons.Default.AccountCircle,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = "Continue with Google",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp
-                    )
                 }
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                // "OR" Divider
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    HorizontalDivider(modifier = Modifier.weight(1f))
+                    Text(
+                        text = "  or sign in with email  ",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    HorizontalDivider(modifier = Modifier.weight(1f))
+                }
+
+                Spacer(modifier = Modifier.height(18.dp))
             }
-
-            Spacer(modifier = Modifier.height(18.dp))
-
-            // "OR" Divider
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                HorizontalDivider(modifier = Modifier.weight(1f))
-                Text(
-                    text = "  or sign in with email  ",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                HorizontalDivider(modifier = Modifier.weight(1f))
-            }
-
-            Spacer(modifier = Modifier.height(18.dp))
 
             // Sign Up specific fields
             if (isSignUpMode && !isForgotPasswordMode) {
@@ -277,23 +281,6 @@ fun AuthScreen(
                 Spacer(modifier = Modifier.height(10.dp))
             }
 
-            // Confirm Password Field (Sign Up only)
-            if (isSignUpMode && !isForgotPasswordMode) {
-                OutlinedTextField(
-                    value = confirmPassword,
-                    onValueChange = { confirmPassword = it },
-                    label = { Text("Confirm Password") },
-                    leadingIcon = { Icon(Icons.Default.LockReset, contentDescription = null) },
-                    visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                    modifier = Modifier.fillMaxWidth().testTag("auth_confirm_password_field"),
-                    shape = RoundedCornerShape(12.dp),
-                    singleLine = true
-                )
-
-                Spacer(modifier = Modifier.height(10.dp))
-            }
-
             // Forgot Password Link
             if (!isSignUpMode && !isForgotPasswordMode) {
                 Row(
@@ -339,17 +326,15 @@ fun AuthScreen(
                             Toast.makeText(context, "Password must be at least 6 characters", Toast.LENGTH_SHORT).show()
                             return@Button
                         }
-                        if (password != confirmPassword) {
-                            Toast.makeText(context, "Passwords do not match", Toast.LENGTH_SHORT).show()
-                            return@Button
-                        }
 
                         isLoading = true
                         scope.launch {
                             val res = authRepo.signUp(fullName, email, phone, password)
                             isLoading = false
                             if (res.isSuccess) {
-                                Toast.makeText(context, "Account created successfully!", Toast.LENGTH_SHORT).show()
+                                val user = res.getOrNull()
+                                val emailText = user?.email ?: email.trim()
+                                Toast.makeText(context, "Logged in as $emailText", Toast.LENGTH_SHORT).show()
                                 onAuthSuccess()
                             }
                         }
@@ -364,7 +349,9 @@ fun AuthScreen(
                             val res = authRepo.logIn(email, password)
                             isLoading = false
                             if (res.isSuccess) {
-                                Toast.makeText(context, "Logged in successfully", Toast.LENGTH_SHORT).show()
+                                val user = res.getOrNull()
+                                val emailText = user?.email ?: email.trim()
+                                Toast.makeText(context, "Logged in as $emailText", Toast.LENGTH_SHORT).show()
                                 onAuthSuccess()
                             }
                         }

@@ -27,7 +27,7 @@ import java.util.UUID
 
 class TourRepository(
     private val context: Context,
-    private val authRepo: AuthRepository
+    val authRepo: AuthRepository
 ) {
     private val TAG = "TourRepository"
     private val firestore: FirebaseFirestore by lazy { FirebaseProvider.getFirestore(context) }
