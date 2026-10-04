@@ -15,8 +15,16 @@ sealed class Screen(val route: String) {
     data object MyTrips : Screen("my_trips")
     data object Profile : Screen("profile")
     data object Auth : Screen("auth")
+    data object Wishlist : Screen("wishlist")
+    data object Notifications : Screen("notifications")
+    data object History : Screen("history?tab={tab}") {
+        fun createRoute(tab: Int = 0) = "history?tab=$tab"
+    }
     data object DestinationDetail : Screen("destination/{destinationId}") {
         fun createRoute(destinationId: String) = "destination/$destinationId"
+    }
+    data object AgencyDetail : Screen("agency/{agencyId}") {
+        fun createRoute(agencyId: String) = "agency/$agencyId"
     }
     data object PackageDetail : Screen("package/{packageId}") {
         fun createRoute(packageId: String) = "package/$packageId"
@@ -30,8 +38,7 @@ data class BottomNavItem(
     val title: String,
     val route: String,
     val selectedIcon: ImageVector,
-    val unselectedIcon: ImageVector,
-    val badgeCount: Int = 0
+    val unselectedIcon: ImageVector
 )
 
 val bottomNavItems = listOf(

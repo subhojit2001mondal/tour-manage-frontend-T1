@@ -2,6 +2,7 @@ package com.example.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -15,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -356,6 +358,109 @@ fun LoadingSkeletonCard(
                         .clip(RoundedCornerShape(4.dp))
                         .background(MaterialTheme.colorScheme.surfaceVariant)
                 )
+            }
+        }
+    }
+}
+
+@Composable
+fun WishlistHeartButton(
+    isWishlisted: Boolean,
+    onToggle: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    IconButton(
+        onClick = onToggle,
+        modifier = modifier
+            .size(48.dp)
+            .background(Color(0x99FFFFFF), CircleShape)
+    ) {
+        Icon(
+            imageVector = if (isWishlisted) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+            contentDescription = if (isWishlisted) "Remove from wishlist" else "Save to wishlist",
+            tint = if (isWishlisted) StatusRed else Color(0xFF1E293B),
+            modifier = Modifier.size(22.dp)
+        )
+    }
+}
+
+@Composable
+fun AgencyCard(
+    agency: com.example.data.models.Agency,
+    packageCount: Int,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .testTag("agency_card_${agency.id}"),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = CardDefaults.outlinedCardBorder()
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.primaryContainer,
+                modifier = Modifier.size(54.dp)
+            ) {
+                if (agency.logoUrl.isNotBlank()) {
+                    coil.compose.AsyncImage(
+                        model = agency.logoUrl,
+                        contentDescription = agency.name,
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.Business,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(26.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.width(14.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = agency.name,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    VerifiedAgencyBadge(verified = agency.verified, tier = agency.tier)
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    RatingBadge(rating = agency.rating)
+
+                    Text(
+                        text = "${agency.city} • $packageCount ${if (packageCount == 1) "tour" else "tours"}",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
     }

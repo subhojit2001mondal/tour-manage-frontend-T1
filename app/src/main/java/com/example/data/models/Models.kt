@@ -208,3 +208,48 @@ data class CompanySettings(
     val aboutText: String = "Tour Manage brings verified tour operators and local agencies from across India under one single marketplace.",
     val termsUrl: String = "https://tourmanage.com/terms"
 )
+
+data class WishlistItem(
+    val packageId: String = "",
+    val savedPrice: Long = 0L,
+    val savedAt: Long = System.currentTimeMillis()
+)
+
+data class NotificationItem(
+    val id: String = "",
+    val customerId: String = "",
+    val title: String = "",
+    val message: String = "",
+    val type: String = "booking", // "booking" | "chat" | "wishlist_price" | "wishlist_seats" | "trip_reminder"
+    val targetType: String = "booking", // "booking" | "package" | "chat"
+    val targetId: String = "",
+    val createdAt: Long = System.currentTimeMillis(),
+    val isRead: Boolean = false
+)
+
+data class SearchHistoryItem(
+    val id: String = "",
+    val query: String = "",
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+data class RecentlyViewedItem(
+    val packageId: String = "",
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+data class NotificationPreferences(
+    val bookingUpdates: Boolean = true,
+    val chatMessages: Boolean = true,
+    val priceAlerts: Boolean = true,
+    val tripReminders: Boolean = true
+)
+
+data class BookingHoldResponse(
+    val bookingId: String = "",
+    val bookingCode: String = "",
+    val mode: String = "demo",
+    val totalAmount: Long = 0L,
+    val razorpayOrderId: String? = null
+)
+

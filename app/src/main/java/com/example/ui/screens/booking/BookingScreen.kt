@@ -26,7 +26,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.models.*
 import com.example.data.repository.AuthRepository
-import com.example.data.repository.BookingHoldResponse
 import com.example.data.repository.TourRepository
 import com.example.ui.components.BackendNotConnectedBanner
 import com.example.ui.components.DepartureStatusChip

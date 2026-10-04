@@ -31,6 +31,7 @@ import com.example.data.models.formatTimestampDate
 import com.example.data.repository.TourRepository
 import com.example.ui.components.*
 import com.example.ui.theme.*
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -39,7 +40,8 @@ fun PackageDetailScreen(
     repository: TourRepository,
     onNavigateBack: () -> Unit,
     onNavigateToBooking: (String, String) -> Unit,
-    onNavigateToCompare: () -> Unit
+    onNavigateToCompare: () -> Unit,
+    onNavigateToAgency: ((String) -> Unit)? = null
 ) {
     val packages by repository.packages.collectAsState()
     val agencies by repository.agencies.collectAsState()
@@ -52,6 +54,14 @@ fun PackageDetailScreen(
     val destination = destinations.find { it.id == pkg?.destinationId }
     val packageDepartures = departures.filter { it.packageId == packageId }
     val isCompared = compareIds.contains(packageId)
+    val wishlist by repository.wishlist.collectAsState()
+    val isWishlisted = remember(wishlist, packageId) { repository.isWishlisted(packageId) }
+    val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(packageId) {
+        repository.addRecentlyViewed(packageId)
+    }
 
     var selectedTab by remember { mutableStateOf(0) } // 0: Overview & Itinerary, 1: Vehicle, 2: Food, 3: Hotel
     var expandedDay by remember { mutableIntStateOf(1) }
@@ -95,6 +105,29 @@ fun PackageDetailScreen(
                 },
                 actions = {
                     IconButton(
+                        onClick = {
+                            val (saved, item) = repository.toggleWishlist(pkg.id)
+                            scope.launch {
+                                val res = snackbarHostState.showSnackbar(
+                                    message = if (saved) "Saved to Wishlist" else "Removed from Wishlist",
+                                    actionLabel = if (!saved) "Undo" else null,
+                                    duration = SnackbarDuration.Short
+                                )
+                                if (res == SnackbarResult.ActionPerformed && item != null) {
+                                    repository.restoreWishlistItem(item)
+                                }
+                            }
+                        },
+                        modifier = Modifier.testTag("toggle_wishlist_button")
+                    ) {
+                        Icon(
+                            imageVector = if (isWishlisted) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                            contentDescription = "Wishlist",
+                            tint = if (isWishlisted) StatusRed else MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+
+                    IconButton(
                         onClick = { repository.toggleCompare(pkg.id) },
                         modifier = Modifier.testTag("toggle_compare_button")
                     ) {
@@ -107,6 +140,7 @@ fun PackageDetailScreen(
                 }
             )
         },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
             Surface(
                 shadowElevation = 8.dp,
@@ -227,7 +261,10 @@ fun PackageDetailScreen(
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 4.dp),
+                            .padding(horizontal = 16.dp, vertical = 4.dp)
+                            .clickable(enabled = onNavigateToAgency != null) {
+                                onNavigateToAgency?.invoke(agency.id)
+                            },
                         colors = CardDefaults.cardColors(
                             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                         ),

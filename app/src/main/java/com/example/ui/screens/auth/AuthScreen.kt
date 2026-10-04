@@ -1,9 +1,13 @@
 package com.example.ui.screens.auth
 
+import android.app.Activity
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -14,16 +18,20 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.repository.AuthRepository
 import com.example.ui.components.ErrorBanner
+import com.example.ui.theme.TourNavy
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -31,14 +39,29 @@ import kotlinx.coroutines.launch
 fun AuthScreen(
     authRepo: AuthRepository,
     onAuthSuccess: () -> Unit,
-    onNavigateBack: () -> Unit
+    onContinueAsGuest: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val authError by authRepo.authError.collectAsState()
+    val isPhoneMissing by authRepo.isPhoneMissing.collectAsState()
+    val currentUser by authRepo.currentUser.collectAsState()
+
+    // If user just logged in with Google and is missing phone, show "Complete your profile"
+    var showPhonePrompt by remember { mutableStateOf(false) }
+    var completePhoneInput by remember { mutableStateOf("") }
+
+    LaunchedEffect(currentUser, isPhoneMissing) {
+        if (currentUser != null && isPhoneMissing) {
+            showPhonePrompt = true
+        } else if (currentUser != null && !isPhoneMissing) {
+            onAuthSuccess()
+        }
+    }
 
     // 0: Log In, 1: Sign Up, 2: Forgot Password
-    var authMode by remember { mutableIntStateOf(0) }
+    var isSignUpMode by remember { mutableStateOf(false) }
+    var isForgotPasswordMode by remember { mutableStateOf(false) }
 
     var fullName by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
@@ -52,18 +75,9 @@ fun AuthScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = {
-                    Text(
-                        text = when (authMode) {
-                            1 -> "Create Customer Account"
-                            2 -> "Reset Password"
-                            else -> "Customer Log In"
-                        },
-                        fontWeight = FontWeight.Bold
-                    )
-                },
+                title = { },
                 navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
+                    IconButton(onClick = onContinueAsGuest) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }
@@ -78,7 +92,41 @@ fun AuthScreen(
                 .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Error banner for exact Firebase failure message
+            // App Logo & Tagline
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.primaryContainer,
+                modifier = Modifier.size(68.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.Explore,
+                        contentDescription = "Tour Manage",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(38.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text(
+                text = "Tour Manage",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.ExtraBold,
+                color = MaterialTheme.colorScheme.primary
+            )
+
+            Text(
+                text = "India's marketplace for verified local tour agencies",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // Error Banner with exact message
             ErrorBanner(
                 errorMessage = authError,
                 onDismiss = { authRepo.clearError() }
@@ -86,56 +134,94 @@ fun AuthScreen(
 
             if (statusNotice != null) {
                 Surface(
-                    shape = RoundedCornerShape(8.dp),
+                    shape = RoundedCornerShape(10.dp),
                     color = MaterialTheme.colorScheme.primaryContainer,
                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 8.dp)
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)
                 ) {
+                    Text(text = statusNotice!!, fontSize = 13.sp, modifier = Modifier.padding(12.dp))
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // PRIMARY "CONTINUE WITH GOOGLE" BUTTON
+            Button(
+                onClick = {
+                    statusNotice = null
+                    scope.launch {
+                        isLoading = true
+                        val res = authRepo.signInWithGoogle(context)
+                        isLoading = false
+                        if (res.isSuccess) {
+                            Toast.makeText(context, "Welcome to Tour Manage!", Toast.LENGTH_SHORT).show()
+                            // Handled by LaunchedEffect
+                        }
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(50.dp)
+                    .testTag("google_signin_button"),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = MaterialTheme.colorScheme.onSurface
+                ),
+                elevation = ButtonDefaults.buttonElevation(defaultElevation = 1.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Google icon symbol
+                    Icon(
+                        imageVector = Icons.Default.AccountCircle,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
                     Text(
-                        text = statusNotice!!,
-                        fontSize = 13.sp,
-                        modifier = Modifier.padding(12.dp)
+                        text = "Continue with Google",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(18.dp))
 
-            // Subtitle
-            Text(
-                text = when (authMode) {
-                    1 -> "Join Tour Manage to book verified packages, save itineraries, and chat with travel specialists."
-                    2 -> "Enter your registered email address and we'll send a password recovery link."
-                    else -> "Log in with your Gmail or registered email to view your trips and bookings."
-                },
-                fontSize = 13.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            // "OR" Divider
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                HorizontalDivider(modifier = Modifier.weight(1f))
+                Text(
+                    text = "  or sign in with email  ",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                HorizontalDivider(modifier = Modifier.weight(1f))
+            }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(18.dp))
 
             // Sign Up specific fields
-            if (authMode == 1) {
+            if (isSignUpMode && !isForgotPasswordMode) {
                 OutlinedTextField(
                     value = fullName,
                     onValueChange = { fullName = it },
                     label = { Text("Full Name") },
                     leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("auth_name_field"),
+                    modifier = Modifier.fillMaxWidth().testTag("auth_name_field"),
                     shape = RoundedCornerShape(12.dp),
                     singleLine = true
                 )
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
                 OutlinedTextField(
                     value = phone,
                     onValueChange = {
-                        // 10 digits check
                         val clean = it.filter { ch -> ch.isDigit() }
                         if (clean.length <= 10) phone = clean
                     },
@@ -143,35 +229,31 @@ fun AuthScreen(
                     prefix = { Text("+91 ") },
                     leadingIcon = { Icon(Icons.Default.Phone, contentDescription = null) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("auth_phone_field"),
+                    modifier = Modifier.fillMaxWidth().testTag("auth_phone_field"),
                     shape = RoundedCornerShape(12.dp),
                     singleLine = true,
                     supportingText = { Text("Format check only (exactly 10 digits, no OTP required)") }
                 )
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(10.dp))
             }
 
-            // Email Field (used in all modes)
+            // Email Field
             OutlinedTextField(
                 value = email,
                 onValueChange = { email = it },
                 label = { Text("Email (Gmail or any email)") },
                 leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("auth_email_field"),
+                modifier = Modifier.fillMaxWidth().testTag("auth_email_field"),
                 shape = RoundedCornerShape(12.dp),
                 singleLine = true
             )
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
-            // Password Field (used in Login & Sign Up)
-            if (authMode != 2) {
+            // Password Field
+            if (!isForgotPasswordMode) {
                 OutlinedTextField(
                     value = password,
                     onValueChange = { password = it },
@@ -187,18 +269,16 @@ fun AuthScreen(
                     },
                     visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("auth_password_field"),
+                    modifier = Modifier.fillMaxWidth().testTag("auth_password_field"),
                     shape = RoundedCornerShape(12.dp),
                     singleLine = true
                 )
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(10.dp))
             }
 
-            // Confirm Password (Sign Up only)
-            if (authMode == 1) {
+            // Confirm Password Field (Sign Up only)
+            if (isSignUpMode && !isForgotPasswordMode) {
                 OutlinedTextField(
                     value = confirmPassword,
                     onValueChange = { confirmPassword = it },
@@ -206,31 +286,29 @@ fun AuthScreen(
                     leadingIcon = { Icon(Icons.Default.LockReset, contentDescription = null) },
                     visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("auth_confirm_password_field"),
+                    modifier = Modifier.fillMaxWidth().testTag("auth_confirm_password_field"),
                     shape = RoundedCornerShape(12.dp),
                     singleLine = true
                 )
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(10.dp))
             }
 
-            // Forgot password link (Login mode)
-            if (authMode == 0) {
+            // Forgot Password Link
+            if (!isSignUpMode && !isForgotPasswordMode) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End
                 ) {
-                    TextButton(onClick = { authMode = 2 }) {
+                    TextButton(onClick = { isForgotPasswordMode = true }) {
                         Text("Forgot password?", fontSize = 12.sp)
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
-            // Primary Action Button
+            // Submit Button
             Button(
                 onClick = {
                     statusNotice = null
@@ -239,79 +317,73 @@ fun AuthScreen(
                         return@Button
                     }
 
-                    when (authMode) {
-                        0 -> {
-                            // LOG IN
-                            if (password.isBlank()) {
-                                Toast.makeText(context, "Please enter your password", Toast.LENGTH_SHORT).show()
-                                return@Button
-                            }
-                            isLoading = true
-                            scope.launch {
-                                val res = authRepo.logIn(email, password)
-                                isLoading = false
-                                if (res.isSuccess) {
-                                    Toast.makeText(context, "Welcome back!", Toast.LENGTH_SHORT).show()
-                                    onAuthSuccess()
-                                }
+                    if (isForgotPasswordMode) {
+                        isLoading = true
+                        scope.launch {
+                            val res = authRepo.sendPasswordReset(email)
+                            isLoading = false
+                            if (res.isSuccess) {
+                                statusNotice = "Password reset email sent to $email. Please check your inbox."
                             }
                         }
-                        1 -> {
-                            // SIGN UP
-                            if (fullName.isBlank()) {
-                                Toast.makeText(context, "Please enter your full name", Toast.LENGTH_SHORT).show()
-                                return@Button
-                            }
-                            if (phone.length != 10) {
-                                Toast.makeText(context, "Please enter a valid 10-digit mobile number (+91)", Toast.LENGTH_LONG).show()
-                                return@Button
-                            }
-                            if (password.length < 6) {
-                                Toast.makeText(context, "Password must be at least 6 characters", Toast.LENGTH_SHORT).show()
-                                return@Button
-                            }
-                            if (password != confirmPassword) {
-                                Toast.makeText(context, "Passwords do not match", Toast.LENGTH_SHORT).show()
-                                return@Button
-                            }
+                    } else if (isSignUpMode) {
+                        if (fullName.isBlank()) {
+                            Toast.makeText(context, "Please enter your full name", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+                        if (phone.length != 10) {
+                            Toast.makeText(context, "Please enter a valid 10-digit phone number (+91)", Toast.LENGTH_LONG).show()
+                            return@Button
+                        }
+                        if (password.length < 6) {
+                            Toast.makeText(context, "Password must be at least 6 characters", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+                        if (password != confirmPassword) {
+                            Toast.makeText(context, "Passwords do not match", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
 
-                            isLoading = true
-                            scope.launch {
-                                val res = authRepo.signUp(fullName, email, phone, password)
-                                isLoading = false
-                                if (res.isSuccess) {
-                                    Toast.makeText(context, "Account created successfully!", Toast.LENGTH_SHORT).show()
-                                    onAuthSuccess()
-                                }
+                        isLoading = true
+                        scope.launch {
+                            val res = authRepo.signUp(fullName, email, phone, password)
+                            isLoading = false
+                            if (res.isSuccess) {
+                                Toast.makeText(context, "Account created successfully!", Toast.LENGTH_SHORT).show()
+                                onAuthSuccess()
                             }
                         }
-                        2 -> {
-                            // FORGOT PASSWORD
-                            isLoading = true
-                            scope.launch {
-                                val res = authRepo.sendPasswordReset(email)
-                                isLoading = false
-                                if (res.isSuccess) {
-                                    statusNotice = "Password reset instructions have been sent to $email. Please check your inbox."
-                                }
+                    } else {
+                        // Log In
+                        if (password.isBlank()) {
+                            Toast.makeText(context, "Please enter your password", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+                        isLoading = true
+                        scope.launch {
+                            val res = authRepo.logIn(email, password)
+                            isLoading = false
+                            if (res.isSuccess) {
+                                Toast.makeText(context, "Logged in successfully", Toast.LENGTH_SHORT).show()
+                                onAuthSuccess()
                             }
                         }
                     }
                 },
                 modifier = Modifier
                     .fillMaxWidth()
+                    .height(48.dp)
                     .testTag("auth_submit_button"),
                 shape = RoundedCornerShape(12.dp),
-                contentPadding = PaddingValues(vertical = 12.dp),
                 enabled = !isLoading
             ) {
                 if (isLoading) {
                     CircularProgressIndicator(modifier = Modifier.size(20.dp), color = MaterialTheme.colorScheme.onPrimary)
                 } else {
                     Text(
-                        text = when (authMode) {
-                            1 -> "Sign Up & Continue"
-                            2 -> "Send Reset Link"
+                        text = when {
+                            isForgotPasswordMode -> "Send Reset Instructions"
+                            isSignUpMode -> "Sign Up & Continue"
                             else -> "Log In"
                         },
                         fontWeight = FontWeight.Bold,
@@ -320,34 +392,108 @@ fun AuthScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
-            // Switch Mode Link
-            when (authMode) {
-                0 -> {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Don't have an account?", fontSize = 13.sp)
-                        TextButton(onClick = { authMode = 1 }) {
-                            Text("Create Account", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        }
-                    }
+            // Switch between Login / Sign Up / Forgot Password
+            if (isForgotPasswordMode) {
+                TextButton(onClick = { isForgotPasswordMode = false }) {
+                    Text("Back to Log In", fontSize = 13.sp)
                 }
-                1 -> {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Already have an account?", fontSize = 13.sp)
-                        TextButton(onClick = { authMode = 0 }) {
-                            Text("Log In", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        }
-                    }
-                }
-                2 -> {
-                    TextButton(onClick = { authMode = 0 }) {
-                        Text("Back to Log In", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = if (isSignUpMode) "Already have an account?" else "Don't have an account?",
+                        fontSize = 13.sp
+                    )
+                    TextButton(onClick = { isSignUpMode = !isSignUpMode }) {
+                        Text(
+                            text = if (isSignUpMode) "Log In" else "Sign Up",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
                     }
                 }
             }
 
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // CONTINUE AS GUEST BUTTON
+            TextButton(
+                onClick = onContinueAsGuest,
+                modifier = Modifier.testTag("continue_as_guest_button")
+            ) {
+                Icon(Icons.Default.ArrowForward, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Continue as guest (browsing only)", fontSize = 13.sp, color = MaterialTheme.colorScheme.primary)
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Small Terms Text
+            Text(
+                text = "By signing in, you agree to Tour Manage Terms of Service and Privacy Policy. All payments and bookings are processed under verified operator escrow.",
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                textAlign = TextAlign.Center,
+                lineHeight = 15.sp
+            )
+
             Spacer(modifier = Modifier.height(30.dp))
         }
+    }
+
+    // "COMPLETE YOUR PROFILE" DIALOG FOR GOOGLE USERS MISSING PHONE
+    if (showPhonePrompt) {
+        AlertDialog(
+            onDismissRequest = { /* Require phone or guest */ },
+            title = { Text("Complete Your Profile", fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text(
+                        text = "To enable tour booking, support chat, and voucher notifications, please provide your 10-digit mobile number.",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = completePhoneInput,
+                        onValueChange = {
+                            val clean = it.filter { ch -> ch.isDigit() }
+                            if (clean.length <= 10) completePhoneInput = clean
+                        },
+                        label = { Text("Mobile Number (+91)") },
+                        prefix = { Text("+91 ") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                        modifier = Modifier.fillMaxWidth().testTag("complete_phone_field"),
+                        shape = RoundedCornerShape(10.dp),
+                        singleLine = true
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (completePhoneInput.length == 10) {
+                            authRepo.completeProfilePhone(completePhoneInput)
+                            showPhonePrompt = false
+                            onAuthSuccess()
+                        } else {
+                            Toast.makeText(context, "Please enter exactly 10 digits", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("Save & Continue")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showPhonePrompt = false
+                    onAuthSuccess()
+                }) {
+                    Text("Skip for Now")
+                }
+            }
+        )
     }
 }

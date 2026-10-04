@@ -2,9 +2,11 @@ package com.example.ui.screens.trips
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -99,18 +101,88 @@ fun MyTripsScreen(
                 )
             }
         } else {
+            var bookingQuery by remember { mutableStateOf("") }
+            var selectedBookingStatus by remember { mutableStateOf("All") }
+
+            val filteredBookings = remember(bookings, bookingQuery, selectedBookingStatus) {
+                bookings.filter { bk ->
+                    val matchQuery = if (bookingQuery.isBlank()) true else {
+                        val q = bookingQuery.lowercase()
+                        bk.bookingCode.lowercase().contains(q) ||
+                        bk.destinationName.lowercase().contains(q) ||
+                        bk.agencyName.lowercase().contains(q) ||
+                        bk.packageTitle.lowercase().contains(q)
+                    }
+                    val matchStatus = if (selectedBookingStatus == "All") true else {
+                        bk.status.equals(selectedBookingStatus, ignoreCase = true)
+                    }
+                    matchQuery && matchStatus
+                }.sortedByDescending { it.travelDate?.toDate()?.time ?: it.createdAt?.toDate()?.time ?: 0L }
+            }
+
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
                     .padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                items(bookings) { bk ->
-                    BookingItemCard(
-                        booking = bk,
-                        onChatClick = { onNavigateToChatWithBooking(bk.bookingCode) }
-                    )
+                // Search box and status filters at top of My Trips
+                item {
+                    Column(modifier = Modifier.padding(bottom = 6.dp)) {
+                        OutlinedTextField(
+                            value = bookingQuery,
+                            onValueChange = { bookingQuery = it },
+                            placeholder = { Text("Search by code, place, agency...") },
+                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                            trailingIcon = {
+                                if (bookingQuery.isNotEmpty()) {
+                                    IconButton(onClick = { bookingQuery = "" }) {
+                                        Icon(Icons.Default.Close, contentDescription = null)
+                                    }
+                                }
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("my_trips_search_field"),
+                            shape = RoundedCornerShape(12.dp),
+                            singleLine = true
+                        )
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(androidx.compose.foundation.rememberScrollState())
+                                .padding(top = 8.dp)
+                        ) {
+                            listOf("All", "confirmed", "held", "completed", "cancelled").forEach { st ->
+                                val isSelected = selectedBookingStatus.equals(st, ignoreCase = true)
+                                FilterChip(
+                                    selected = isSelected,
+                                    onClick = { selectedBookingStatus = st },
+                                    label = { Text(st.replaceFirstChar { it.uppercase() }) },
+                                    modifier = Modifier.padding(end = 6.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (filteredBookings.isEmpty()) {
+                    item {
+                        EmptyState(
+                            icon = Icons.Outlined.SearchOff,
+                            title = "No matching bookings found",
+                            subtitle = "Try changing your status filter or search keyword."
+                        )
+                    }
+                } else {
+                    items(filteredBookings) { bk ->
+                        BookingItemCard(
+                            booking = bk,
+                            onChatClick = { onNavigateToChatWithBooking(bk.bookingCode) }
+                        )
+                    }
                 }
                 item {
                     Spacer(modifier = Modifier.height(30.dp))

@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.CompareArrows
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -31,9 +32,8 @@ import com.example.ui.components.DepartureStatusChip
 import com.example.ui.components.EmptyState
 import com.example.ui.components.RatingBadge
 import com.example.ui.components.VerifiedAgencyBadge
-import com.example.ui.theme.StatusGreen
-import com.example.ui.theme.TourGold
-import com.example.ui.theme.TourNavy
+import com.example.ui.theme.*
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -66,8 +66,12 @@ fun CompareScreen(
     val bestRating = remember(comparedPackages) {
         comparedPackages.maxOfOrNull { it.rating } ?: 0.0
     }
+    val wishlist by repository.wishlist.collectAsState()
+    val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = {
@@ -229,15 +233,41 @@ fun CompareScreen(
                                                     overflow = TextOverflow.Ellipsis,
                                                     modifier = Modifier.weight(1f)
                                                 )
-                                                IconButton(
-                                                    onClick = { repository.removeFromCompare(pkg.id) },
-                                                    modifier = Modifier.size(20.dp)
-                                                ) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.Close,
-                                                        contentDescription = "Remove",
-                                                        modifier = Modifier.size(14.dp)
-                                                    )
+                                                val isWishlisted = repository.isWishlisted(pkg.id)
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    IconButton(
+                                                        onClick = {
+                                                            val (saved, item) = repository.toggleWishlist(pkg.id)
+                                                            scope.launch {
+                                                                val res = snackbarHostState.showSnackbar(
+                                                                    message = if (saved) "Saved to Wishlist" else "Removed from Wishlist",
+                                                                    actionLabel = if (!saved) "Undo" else null,
+                                                                    duration = SnackbarDuration.Short
+                                                                )
+                                                                if (res == SnackbarResult.ActionPerformed && item != null) {
+                                                                    repository.restoreWishlistItem(item)
+                                                                }
+                                                            }
+                                                        },
+                                                        modifier = Modifier.size(24.dp)
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = if (isWishlisted) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                                                            contentDescription = "Wishlist",
+                                                            tint = if (isWishlisted) StatusRed else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                            modifier = Modifier.size(16.dp)
+                                                        )
+                                                    }
+                                                    IconButton(
+                                                        onClick = { repository.removeFromCompare(pkg.id) },
+                                                        modifier = Modifier.size(20.dp)
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.Close,
+                                                            contentDescription = "Remove",
+                                                            modifier = Modifier.size(14.dp)
+                                                        )
+                                                    }
                                                 }
                                             }
 

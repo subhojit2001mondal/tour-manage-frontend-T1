@@ -25,12 +25,16 @@ import com.example.ui.screens.auth.AuthScreen
 import com.example.ui.screens.booking.BookingScreen
 import com.example.ui.screens.calendar.CalendarScreen
 import com.example.ui.screens.compare.CompareScreen
+import com.example.ui.screens.history.ActivityHistoryScreen
+import com.example.ui.screens.home.AgencyDetailScreen
 import com.example.ui.screens.home.DestinationDetailScreen
 import com.example.ui.screens.home.HomeScreen
 import com.example.ui.screens.home.PackageDetailScreen
+import com.example.ui.screens.notifications.NotificationScreen
 import com.example.ui.screens.profile.ProfileScreen
 import com.example.ui.screens.support.SupportScreen
 import com.example.ui.screens.trips.MyTripsScreen
+import com.example.ui.screens.wishlist.WishlistScreen
 import com.example.ui.theme.TourManageTheme
 
 class MainActivity : ComponentActivity() {
@@ -127,6 +131,9 @@ fun TourManageApp(
                     onNavigateToDestination = { destId ->
                         navController.navigate(Screen.DestinationDetail.createRoute(destId))
                     },
+                    onNavigateToAgency = { agencyId ->
+                        navController.navigate(Screen.AgencyDetail.createRoute(agencyId))
+                    },
                     onNavigateToPackage = { pkgId ->
                         navController.navigate(Screen.PackageDetail.createRoute(pkgId))
                     },
@@ -135,6 +142,12 @@ fun TourManageApp(
                     },
                     onNavigateToCompare = {
                         navController.navigate(Screen.Compare.route)
+                    },
+                    onNavigateToWishlist = {
+                        navController.navigate(Screen.Wishlist.route)
+                    },
+                    onNavigateToNotifications = {
+                        navController.navigate(Screen.Notifications.route)
                     }
                 )
             }
@@ -161,7 +174,29 @@ fun TourManageApp(
                 )
             }
 
-            // 3. PACKAGE DETAIL SCREEN
+            // 3. AGENCY DETAIL SCREEN
+            composable(
+                route = Screen.AgencyDetail.route,
+                arguments = listOf(navArgument("agencyId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val agencyId = backStackEntry.arguments?.getString("agencyId") ?: ""
+                AgencyDetailScreen(
+                    agencyId = agencyId,
+                    repository = tourRepository,
+                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateToPackage = { pkgId ->
+                        navController.navigate(Screen.PackageDetail.createRoute(pkgId))
+                    },
+                    onNavigateToBooking = { pkgId, depId ->
+                        navController.navigate(Screen.Booking.createRoute(pkgId, depId))
+                    },
+                    onNavigateToSupport = {
+                        navController.navigate(Screen.Support.route)
+                    }
+                )
+            }
+
+            // 4. PACKAGE DETAIL SCREEN
             composable(
                 route = Screen.PackageDetail.route,
                 arguments = listOf(navArgument("packageId") { type = NavType.StringType })
@@ -176,11 +211,14 @@ fun TourManageApp(
                     },
                     onNavigateToCompare = {
                         navController.navigate(Screen.Compare.route)
+                    },
+                    onNavigateToAgency = { agencyId ->
+                        navController.navigate(Screen.AgencyDetail.createRoute(agencyId))
                     }
                 )
             }
 
-            // 4. COMPARE SCREEN
+            // 5. COMPARE SCREEN
             composable(Screen.Compare.route) {
                 CompareScreen(
                     repository = tourRepository,
@@ -193,7 +231,7 @@ fun TourManageApp(
                 )
             }
 
-            // 5. CALENDAR SCREEN
+            // 6. CALENDAR SCREEN
             composable(Screen.Calendar.route) {
                 CalendarScreen(
                     repository = tourRepository,
@@ -203,7 +241,7 @@ fun TourManageApp(
                 )
             }
 
-            // 6. SUPPORT SCREEN
+            // 7. SUPPORT SCREEN
             composable(Screen.Support.route) {
                 SupportScreen(
                     repository = tourRepository,
@@ -214,7 +252,7 @@ fun TourManageApp(
                 )
             }
 
-            // 7. MY TRIPS SCREEN
+            // 8. MY TRIPS SCREEN
             composable(Screen.MyTrips.route) {
                 MyTripsScreen(
                     repository = tourRepository,
@@ -231,7 +269,7 @@ fun TourManageApp(
                 )
             }
 
-            // 8. BOOKING SCREEN
+            // 9. BOOKING SCREEN
             composable(
                 route = Screen.Booking.route,
                 arguments = listOf(
@@ -264,22 +302,95 @@ fun TourManageApp(
                 )
             }
 
-            // 9. AUTH SCREEN
+            // 10. AUTH SCREEN
             composable(Screen.Auth.route) {
                 AuthScreen(
                     authRepo = authRepository,
                     onAuthSuccess = { navController.popBackStack() },
-                    onNavigateBack = { navController.popBackStack() }
+                    onContinueAsGuest = { navController.popBackStack() }
                 )
             }
 
-            // 10. PROFILE SCREEN
+            // 11. PROFILE SCREEN
             composable(Screen.Profile.route) {
                 ProfileScreen(
                     authRepo = authRepository,
+                    tourRepo = tourRepository,
                     onNavigateBack = { navController.popBackStack() },
                     onNavigateToAuth = {
                         navController.navigate(Screen.Auth.route)
+                    },
+                    onNavigateToWishlist = {
+                        navController.navigate(Screen.Wishlist.route)
+                    },
+                    onNavigateToNotifications = {
+                        navController.navigate(Screen.Notifications.route)
+                    },
+                    onNavigateToHistory = {
+                        navController.navigate(Screen.History.createRoute(0))
+                    }
+                )
+            }
+
+            // 12. WISHLIST SCREEN
+            composable(Screen.Wishlist.route) {
+                WishlistScreen(
+                    repository = tourRepository,
+                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateToPackage = { pkgId ->
+                        navController.navigate(Screen.PackageDetail.createRoute(pkgId))
+                    },
+                    onNavigateToBooking = { pkgId, depId ->
+                        navController.navigate(Screen.Booking.createRoute(pkgId, depId))
+                    },
+                    onNavigateToCompare = {
+                        navController.navigate(Screen.Compare.route)
+                    },
+                    onNavigateToHome = {
+                        navController.navigate(Screen.Home.route)
+                    }
+                )
+            }
+
+            // 13. NOTIFICATIONS SCREEN
+            composable(Screen.Notifications.route) {
+                NotificationScreen(
+                    repository = tourRepository,
+                    onNavigateBack = { navController.popBackStack() },
+                    onOpenTarget = { targetType, targetId ->
+                        when (targetType) {
+                            "booking" -> navController.navigate(Screen.MyTrips.route)
+                            "package" -> navController.navigate(Screen.PackageDetail.createRoute(targetId))
+                            "chat" -> navController.navigate(Screen.Support.route)
+                            else -> navController.navigate(Screen.Home.route)
+                        }
+                    }
+                )
+            }
+
+            // 14. ACTIVITY HISTORY SCREEN
+            composable(
+                route = Screen.History.route,
+                arguments = listOf(
+                    navArgument("tab") {
+                        type = NavType.IntType
+                        defaultValue = 0
+                    }
+                )
+            ) { backStackEntry ->
+                val tab = backStackEntry.arguments?.getInt("tab") ?: 0
+                ActivityHistoryScreen(
+                    repository = tourRepository,
+                    initialTab = tab,
+                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateToPackage = { pkgId ->
+                        navController.navigate(Screen.PackageDetail.createRoute(pkgId))
+                    },
+                    onNavigateToSearchQuery = { query ->
+                        navController.navigate(Screen.Home.route)
+                    },
+                    onNavigateToChatWithBooking = { bookingCode ->
+                        navController.navigate(Screen.Support.route)
                     }
                 )
             }
