@@ -117,6 +117,7 @@ class TourRepository(
     init {
         TourNotificationHelper.createChannels(context)
         loadSavedCompare()
+        _wishlist.value = loadGuestWishlist()
         setupListeners()
 
         // Observe Auth changes to load customer-specific data
@@ -132,7 +133,7 @@ class TourRepository(
                     chatListener?.remove()
                     _myBookings.value = emptyList()
                     _chatMessages.value = emptyList()
-                    _wishlist.value = emptyList()
+                    _wishlist.value = loadGuestWishlist()
                     _notifications.value = emptyList()
                     _searchHistory.value = emptyList()
                     _recentlyViewed.value = emptyList()
@@ -153,12 +154,13 @@ class TourRepository(
     private fun getCustomerPrefs(uid: String) =
         context.getSharedPreferences("tour_customer_$uid", Context.MODE_PRIVATE)
 
-    private fun loadCustomerLocalData(uid: String) {
-        val prefs = getCustomerPrefs(uid)
+    private fun getGuestPrefs() =
+        context.getSharedPreferences("tour_guest_prefs", Context.MODE_PRIVATE)
 
-        // Load Wishlist
+    private fun loadGuestWishlist(): List<WishlistItem> {
+        val prefs = getGuestPrefs()
         val wishJson = prefs.getString("wishlist_json", "[]") ?: "[]"
-        try {
+        return try {
             val arr = JSONArray(wishJson)
             val list = mutableListOf<WishlistItem>()
             for (i in 0 until arr.length()) {
@@ -171,10 +173,64 @@ class TourRepository(
                     )
                 )
             }
-            _wishlist.value = list
+            list
         } catch (e: Exception) {
-            _wishlist.value = emptyList()
+            emptyList()
         }
+    }
+
+    private fun saveGuestWishlist(list: List<WishlistItem>) {
+        val arr = JSONArray()
+        list.forEach { item ->
+            arr.put(JSONObject().apply {
+                put("packageId", item.packageId)
+                put("savedPrice", item.savedPrice)
+                put("savedAt", item.savedAt)
+            })
+        }
+        getGuestPrefs().edit().putString("wishlist_json", arr.toString()).apply()
+    }
+
+    private fun loadCustomerLocalData(uid: String) {
+        val prefs = getCustomerPrefs(uid)
+
+        // Load Wishlist
+        val wishJson = prefs.getString("wishlist_json", "[]") ?: "[]"
+        val userWishlist = try {
+            val arr = JSONArray(wishJson)
+            val list = mutableListOf<WishlistItem>()
+            for (i in 0 until arr.length()) {
+                val obj = arr.getJSONObject(i)
+                list.add(
+                    WishlistItem(
+                        packageId = obj.getString("packageId"),
+                        savedPrice = obj.optLong("savedPrice", 0L),
+                        savedAt = obj.optLong("savedAt", System.currentTimeMillis())
+                    )
+                )
+            }
+            list
+        } catch (e: Exception) {
+            mutableListOf<WishlistItem>()
+        }
+
+        // Merge guest wishlist into user account upon login
+        val guestItems = loadGuestWishlist()
+        if (guestItems.isNotEmpty()) {
+            var mergedAny = false
+            guestItems.forEach { guestItem ->
+                if (userWishlist.none { it.packageId == guestItem.packageId }) {
+                    userWishlist.add(0, guestItem)
+                    mergedAny = true
+                }
+            }
+            if (mergedAny) {
+                saveWishlist(uid, userWishlist)
+            }
+            // Clear guest wishlist after merging
+            getGuestPrefs().edit().remove("wishlist_json").apply()
+        }
+        _wishlist.value = userWishlist
 
         // Load Notifications
         val notifJson = prefs.getString("notif_json", "[]") ?: "[]"
@@ -252,43 +308,74 @@ class TourRepository(
 
     // WISHLIST OPERATIONS
     fun toggleWishlist(packageId: String): Pair<Boolean, WishlistItem?> {
-        val uid = authRepo.currentUser.value?.uid ?: return Pair(false, null)
         val current = _wishlist.value.toMutableList()
         val existingIndex = current.indexOfFirst { it.packageId == packageId }
 
         val pkg = _packages.value.find { it.id == packageId }
         val price = pkg?.pricePerPerson ?: 0L
 
-        return if (existingIndex >= 0) {
+        val (isAdded, item) = if (existingIndex >= 0) {
             val removedItem = current.removeAt(existingIndex)
-            _wishlist.value = current
-            saveWishlist(uid, current)
             Pair(false, removedItem)
         } else {
             val newItem = WishlistItem(packageId = packageId, savedPrice = price, savedAt = System.currentTimeMillis())
             current.add(0, newItem)
-            _wishlist.value = current
-            saveWishlist(uid, current)
             Pair(true, newItem)
         }
+
+        _wishlist.value = current
+
+        try {
+            val uid = authRepo.currentUser.value?.uid
+            if (uid != null) {
+                saveWishlist(uid, current)
+            } else {
+                saveGuestWishlist(current)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error saving wishlist", e)
+            _firestoreError.value = "Failed to save wishlist: ${e.localizedMessage ?: e.message}"
+        }
+
+        return Pair(isAdded, item)
     }
 
     fun restoreWishlistItem(item: WishlistItem) {
-        val uid = authRepo.currentUser.value?.uid ?: return
         val current = _wishlist.value.toMutableList()
         if (current.none { it.packageId == item.packageId }) {
             current.add(0, item)
             _wishlist.value = current
-            saveWishlist(uid, current)
+            try {
+                val uid = authRepo.currentUser.value?.uid
+                if (uid != null) {
+                    saveWishlist(uid, current)
+                } else {
+                    saveGuestWishlist(current)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error restoring wishlist item", e)
+                _firestoreError.value = "Failed to restore wishlist: ${e.localizedMessage ?: e.message}"
+            }
         }
     }
 
     fun removeFromWishlist(packageId: String) {
-        val uid = authRepo.currentUser.value?.uid ?: return
         val current = _wishlist.value.toMutableList()
-        current.removeAll { it.packageId == packageId }
-        _wishlist.value = current
-        saveWishlist(uid, current)
+        val changed = current.removeAll { it.packageId == packageId }
+        if (changed) {
+            _wishlist.value = current
+            try {
+                val uid = authRepo.currentUser.value?.uid
+                if (uid != null) {
+                    saveWishlist(uid, current)
+                } else {
+                    saveGuestWishlist(current)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error removing from wishlist", e)
+                _firestoreError.value = "Failed to update wishlist: ${e.localizedMessage ?: e.message}"
+            }
+        }
     }
 
     fun isWishlisted(packageId: String): Boolean {

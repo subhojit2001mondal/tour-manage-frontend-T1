@@ -32,6 +32,7 @@ import com.example.data.models.formatInr
 import com.example.data.models.formatTimestampDate
 import com.example.data.repository.TourRepository
 import com.example.ui.components.EmptyState
+import com.example.ui.components.ErrorBanner
 import com.example.ui.components.IndianPriceText
 import com.example.ui.components.RatingBadge
 import com.example.ui.components.VerifiedAgencyBadge
@@ -56,6 +57,7 @@ fun WishlistScreen(
     val agencies by repository.agencies.collectAsState()
     val destinations by repository.destinations.collectAsState()
     val departures by repository.departures.collectAsState()
+    val firestoreError by repository.firestoreError.collectAsState()
 
     var searchQuery by remember { mutableStateOf("") }
     var sortBy by remember { mutableStateOf("recent") } // "recent", "price_asc", "departure"
@@ -124,6 +126,13 @@ fun WishlistScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
+            // Error banner for save or network failures
+            ErrorBanner(
+                errorMessage = firestoreError,
+                onDismiss = { repository.clearError() },
+                onRetry = { repository.refreshAll() }
+            )
+
             // Search & Sort row
             if (wishlistItems.isNotEmpty()) {
                 Row(
@@ -196,7 +205,7 @@ fun WishlistScreen(
                                 val (_, removedItem) = repository.toggleWishlist(item.pkg.id)
                                 scope.launch {
                                     val result = snackbarHostState.showSnackbar(
-                                        message = "Removed '${item.pkg.title.take(25)}...' from Wishlist",
+                                        message = "Removed from wishlist",
                                         actionLabel = "Undo",
                                         duration = SnackbarDuration.Short
                                     )
@@ -418,12 +427,34 @@ fun WishlistCard(
                 ) {
                     IndianPriceText(amount = currentPrice, fontSize = 16)
 
-                    Button(
-                        onClick = onBookNow,
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Book Now", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        OutlinedButton(
+                            onClick = onRemove,
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                            modifier = Modifier.minimumInteractiveComponentSize()
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.DeleteOutline,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = StatusRed
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Remove", fontSize = 12.sp, color = StatusRed)
+                        }
+
+                        Button(
+                            onClick = onBookNow,
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                            modifier = Modifier.minimumInteractiveComponentSize()
+                        ) {
+                            Text("Book Now", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }

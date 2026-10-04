@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -29,6 +30,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
 import com.example.data.models.Agency
 import com.example.data.models.Destination
 import com.example.data.models.TourPackage
@@ -186,160 +188,222 @@ fun HomeScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Surface(
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.primaryContainer,
-                            modifier = Modifier.size(36.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = Icons.Default.Explore,
-                                    contentDescription = "Tour Manage",
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column {
-                            Text(
-                                text = "Tour Manage",
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 18.sp,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Text(
-                                text = "India's Tour Marketplace",
-                                fontSize = 10.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                },
-                actions = {
-                    // Wishlist icon with badge
-                    IconButton(
-                        onClick = onNavigateToWishlist,
-                        modifier = Modifier.testTag("wishlist_button")
-                    ) {
-                        BadgedBox(
-                            badge = {
-                                if (wishlist.isNotEmpty()) {
-                                    Badge { Text(wishlist.size.toString()) }
-                                }
-                            }
-                        ) {
-                            Icon(Icons.Default.FavoriteBorder, contentDescription = "Wishlist")
-                        }
-                    }
+        val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior(rememberTopAppBarState())
+        val firstName = remember(customerProfile, currentUser) {
+            customerProfile?.name?.trim()?.split("\\s+".toRegex())?.firstOrNull()?.ifBlank { null }
+                ?: currentUser?.displayName?.trim()?.split("\\s+".toRegex())?.firstOrNull()?.ifBlank { null }
+                ?: currentUser?.email?.substringBefore("@")?.replaceFirstChar { it.uppercase() }
+        }
 
-                    // Notification bell with unread badge
-                    IconButton(
-                        onClick = onNavigateToNotifications,
-                        modifier = Modifier.testTag("notifications_button")
-                    ) {
-                        BadgedBox(
-                            badge = {
-                                if (unreadNotifCount > 0) {
-                                    Badge { Text(unreadNotifCount.toString()) }
-                                }
-                            }
-                        ) {
-                            Icon(Icons.Default.NotificationsNone, contentDescription = "Notifications")
-                        }
-                    }
-
-                    // Profile icon / avatar in top bar
-                    IconButton(
-                        onClick = onNavigateToProfile,
-                        modifier = Modifier.testTag("profile_button")
-                    ) {
-                        if (currentUser != null) {
-                            Surface(
-                                shape = CircleShape,
-                                color = MaterialTheme.colorScheme.primary,
-                                contentColor = Color.White,
-                                modifier = Modifier.size(30.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Text(
-                                        text = userInitials,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 11.sp
-                                    )
-                                }
-                            }
-                        } else {
-                            Icon(Icons.Outlined.AccountCircle, contentDescription = "Profile")
-                        }
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
-            )
-        },
-        snackbarHost = { SnackbarHost(snackbarHostState) }
-    ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-        ) {
-            // Error banner for Firebase failures
-            item {
-                ErrorBanner(
-                    errorMessage = firestoreError,
-                    onDismiss = { repository.clearError() },
-                    onRetry = { repository.refreshAll() }
-                )
-            }
-
-            // Universal Search Box
-            item {
+        Scaffold(
+            modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+            topBar = {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 6.dp)
+                        .background(MaterialTheme.colorScheme.surface)
                 ) {
-                    OutlinedTextField(
-                        value = searchQuery,
-                        onValueChange = { searchQuery = it },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("search_bar"),
-                        placeholder = { Text("Search places, agencies, packages...") },
-                        leadingIcon = {
-                            Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                        },
-                        trailingIcon = {
+                    TopAppBar(
+                        title = {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                if (searchQuery.isNotEmpty()) {
-                                    IconButton(onClick = { searchQuery = ""; debouncedQuery = "" }) {
-                                        Icon(Icons.Default.Close, contentDescription = "Clear")
+                                Surface(
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Default.Explore,
+                                            contentDescription = "Tour Manage",
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(18.dp)
+                                        )
                                     }
                                 }
-                                IconButton(
-                                    onClick = { showFilterSheet = true },
-                                    modifier = Modifier.testTag("filter_button")
-                                ) {
-                                    Icon(Icons.Default.Tune, contentDescription = "Filters")
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column {
+                                    Text(
+                                        text = "Tour Manage",
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontSize = 17.sp,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                    if (currentUser != null && firstName != null) {
+                                        Text(
+                                            text = "Hi, $firstName",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            softWrap = false,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
                                 }
                             }
                         },
-                        shape = RoundedCornerShape(16.dp),
-                        singleLine = true
+                        actions = {
+                            // Wishlist icon with count badge
+                            IconButton(
+                                onClick = onNavigateToWishlist,
+                                modifier = Modifier
+                                    .testTag("wishlist_button")
+                                    .minimumInteractiveComponentSize()
+                            ) {
+                                BadgedBox(
+                                    badge = {
+                                        if (wishlist.isNotEmpty()) {
+                                            Badge { Text(wishlist.size.toString()) }
+                                        }
+                                    }
+                                ) {
+                                    Icon(
+                                        imageVector = if (wishlist.isNotEmpty()) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                                        contentDescription = "Wishlist",
+                                        tint = if (wishlist.isNotEmpty()) StatusRed else MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+
+                            // Notification bell with unread badge
+                            IconButton(
+                                onClick = onNavigateToNotifications,
+                                modifier = Modifier
+                                    .testTag("notifications_button")
+                                    .minimumInteractiveComponentSize()
+                            ) {
+                                BadgedBox(
+                                    badge = {
+                                        if (unreadNotifCount > 0) {
+                                            Badge { Text(unreadNotifCount.toString()) }
+                                        }
+                                    }
+                                ) {
+                                    Icon(Icons.Outlined.Notifications, contentDescription = "Notifications")
+                                }
+                            }
+
+                            // Profile avatar
+                            IconButton(
+                                onClick = onNavigateToProfile,
+                                modifier = Modifier
+                                    .testTag("profile_button")
+                                    .minimumInteractiveComponentSize()
+                            ) {
+                                if (currentUser != null) {
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        contentColor = Color.White,
+                                        modifier = Modifier.size(30.dp)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Text(
+                                                text = userInitials,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 11.sp
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    Icon(Icons.Outlined.AccountCircle, contentDescription = "Profile")
+                                }
+                            }
+                        },
+                        scrollBehavior = scrollBehavior,
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            scrolledContainerColor = MaterialTheme.colorScheme.surface
+                        )
                     )
 
-                    // Grouped As-You-Type Suggestions: Places | Agencies | Packages
-                    if (groupedSuggestions != null && (groupedSuggestions.first.isNotEmpty() || groupedSuggestions.second.isNotEmpty() || groupedSuggestions.third.isNotEmpty())) {
+                    // Pinned Search Bar under TopAppBar
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 6.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(52.dp)
+                                .testTag("search_bar"),
+                            placeholder = {
+                                Text(
+                                    text = "Search places, agencies, packages",
+                                    fontSize = 13.sp,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Search,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            },
+                            trailingIcon = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (searchQuery.isNotEmpty()) {
+                                        IconButton(
+                                            onClick = { searchQuery = ""; debouncedQuery = "" },
+                                            modifier = Modifier.size(36.dp)
+                                        ) {
+                                            Icon(Icons.Default.Close, contentDescription = "Clear", modifier = Modifier.size(18.dp))
+                                        }
+                                    }
+                                    IconButton(
+                                        onClick = { showFilterSheet = true },
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .testTag("filter_button")
+                                    ) {
+                                        Icon(Icons.Default.Tune, contentDescription = "Filters", modifier = Modifier.size(20.dp))
+                                    }
+                                }
+                            },
+                            shape = RoundedCornerShape(26.dp),
+                            singleLine = true,
+                            textStyle = LocalTextStyle.current.copy(fontSize = 13.sp)
+                        )
+                    }
+
+                    HorizontalDivider(
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
+                }
+            },
+            snackbarHost = { SnackbarHost(snackbarHostState) }
+        ) { innerPadding ->
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+            ) {
+                // Error banner for Firebase failures
+                item {
+                    ErrorBanner(
+                        errorMessage = firestoreError,
+                        onDismiss = { repository.clearError() },
+                        onRetry = { repository.refreshAll() }
+                    )
+                }
+
+                // Grouped As-You-Type Suggestions: Places | Agencies | Packages
+                if (groupedSuggestions != null && (groupedSuggestions.first.isNotEmpty() || groupedSuggestions.second.isNotEmpty() || groupedSuggestions.third.isNotEmpty())) {
+                    item {
                         Surface(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(top = 4.dp),
+                                .padding(horizontal = 16.dp, vertical = 4.dp),
                             shape = RoundedCornerShape(14.dp),
                             shadowElevation = 6.dp,
                             color = MaterialTheme.colorScheme.surface
@@ -429,7 +493,6 @@ fun HomeScreen(
                         }
                     }
                 }
-            }
 
             // Results category filter chips (All | Places | Agencies | Packages)
             if (isSearching) {
@@ -638,64 +701,13 @@ fun HomeScreen(
 
                         LazyRow(
                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             items(agencies.filter { it.active }) { agency ->
-                                Card(
-                                    modifier = Modifier
-                                        .width(200.dp)
-                                        .clickable { onNavigateToAgency(agency.id) },
-                                    shape = RoundedCornerShape(14.dp),
-                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                                    border = CardDefaults.outlinedCardBorder()
-                                ) {
-                                    Column(modifier = Modifier.padding(12.dp)) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Surface(
-                                                shape = CircleShape,
-                                                color = MaterialTheme.colorScheme.primaryContainer,
-                                                modifier = Modifier.size(36.dp)
-                                            ) {
-                                                if (agency.logoUrl.isNotBlank()) {
-                                                    AsyncImage(
-                                                        model = agency.logoUrl,
-                                                        contentDescription = agency.name,
-                                                        contentScale = ContentScale.Crop,
-                                                        modifier = Modifier.fillMaxSize()
-                                                    )
-                                                } else {
-                                                    Box(contentAlignment = Alignment.Center) {
-                                                        Icon(Icons.Default.Business, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                                                    }
-                                                }
-                                            }
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Column(modifier = Modifier.weight(1f)) {
-                                                Text(
-                                                    text = agency.name,
-                                                    fontWeight = FontWeight.Bold,
-                                                    fontSize = 13.sp,
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
-                                                Text(
-                                                    text = agency.city,
-                                                    fontSize = 11.sp,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                            }
-                                        }
-                                        Spacer(modifier = Modifier.height(8.dp))
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            VerifiedAgencyBadge(verified = agency.verified, tier = agency.tier)
-                                            RatingBadge(rating = agency.rating)
-                                        }
-                                    }
-                                }
+                                PartnerAgencyCard(
+                                    agency = agency,
+                                    onClick = { onNavigateToAgency(agency.id) }
+                                )
                             }
                         }
                     }
@@ -743,7 +755,7 @@ fun HomeScreen(
                     val ag = agencies.find { it.id == pkg.agencyId }
                     val dest = destinations.find { it.id == pkg.destinationId }
                     val isCompared = compareIds.contains(pkg.id)
-                    val isSaved = repository.isWishlisted(pkg.id)
+                    val isSaved = wishlist.any { it.packageId == pkg.id }
 
                     TourPackageCard(
                         pkg = pkg,
@@ -755,12 +767,16 @@ fun HomeScreen(
                             val (saved, item) = repository.toggleWishlist(pkg.id)
                             scope.launch {
                                 val res = snackbarHostState.showSnackbar(
-                                    message = if (saved) "Saved to Wishlist" else "Removed from Wishlist",
-                                    actionLabel = if (!saved) "Undo" else null,
+                                    message = if (saved) "Added to wishlist" else "Removed from wishlist",
+                                    actionLabel = "Undo",
                                     duration = SnackbarDuration.Short
                                 )
                                 if (res == SnackbarResult.ActionPerformed && item != null) {
-                                    repository.restoreWishlistItem(item)
+                                    if (saved) {
+                                        repository.removeFromWishlist(pkg.id)
+                                    } else {
+                                        repository.restoreWishlistItem(item)
+                                    }
                                 }
                             }
                         },
@@ -769,13 +785,12 @@ fun HomeScreen(
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
                     )
                 }
-            }
 
-            item {
-                Spacer(modifier = Modifier.height(30.dp))
+                item {
+                    Spacer(modifier = Modifier.height(30.dp))
+                }
             }
         }
-    }
 
     // Filter Bottom Sheet
     if (showFilterSheet) {
@@ -883,6 +898,7 @@ fun HomeScreen(
         }
     }
 }
+}
 
 @Composable
 fun TourPackageCard(
@@ -928,7 +944,7 @@ fun TourPackageCard(
                         )
                 )
 
-                // Duration badge
+                // Duration badge on top left
                 Surface(
                     shape = RoundedCornerShape(8.dp),
                     color = Color(0xCC000000),
@@ -951,50 +967,35 @@ fun TourPackageCard(
                         Text(
                             text = "${pkg.days}D / ${pkg.nights}N",
                             fontWeight = FontWeight.Bold,
-                            fontSize = 11.sp
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                 }
 
-                // Top right action buttons: Compare and Wishlist Heart
-                Row(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (onWishlistToggle != null) {
+                // Top right: ONLY the heart (wishlist) button (40 dp circular with semi-transparent dark background)
+                if (onWishlistToggle != null) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(8.dp)
+                    ) {
                         IconButton(
                             onClick = onWishlistToggle,
                             modifier = Modifier
-                                .size(36.dp)
-                                .background(Color(0x88000000), CircleShape)
+                                .size(40.dp)
+                                .background(Color(0x77000000), CircleShape)
+                                .minimumInteractiveComponentSize()
+                                .testTag("wishlist_btn_${pkg.id}")
                         ) {
                             Icon(
                                 imageVector = if (isWishlisted) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
-                                contentDescription = "Wishlist",
+                                contentDescription = if (isWishlisted) "Remove from Wishlist" else "Add to Wishlist",
                                 tint = if (isWishlisted) StatusRed else Color.White,
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(22.dp)
                             )
                         }
-                    }
-
-                    IconButton(
-                        onClick = onCompareToggle,
-                        modifier = Modifier
-                            .size(36.dp)
-                            .background(
-                                if (isCompared) TourGold else Color(0x88000000),
-                                CircleShape
-                            )
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.CompareArrows,
-                            contentDescription = "Compare Package",
-                            tint = if (isCompared) Color.Black else Color.White,
-                            modifier = Modifier.size(20.dp)
-                        )
                     }
                 }
 
@@ -1019,6 +1020,7 @@ fun TourPackageCard(
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.primary,
                             maxLines = 1,
+                            softWrap = false,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f)
                         )
@@ -1089,6 +1091,7 @@ fun TourPackageCard(
                 HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
                 Spacer(modifier = Modifier.height(10.dp))
 
+                // Bottom Action Row with labelled Compare button and View Details button
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -1096,13 +1099,262 @@ fun TourPackageCard(
                 ) {
                     IndianPriceText(amount = pkg.pricePerPerson)
 
-                    Button(
-                        onClick = onClick,
-                        shape = RoundedCornerShape(10.dp),
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("View Details", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        OutlinedButton(
+                            onClick = onCompareToggle,
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                            colors = if (isCompared) {
+                                ButtonDefaults.outlinedButtonColors(
+                                    containerColor = TourGold.copy(alpha = 0.15f),
+                                    contentColor = TourGoldDark
+                                )
+                            } else {
+                                ButtonDefaults.outlinedButtonColors()
+                            },
+                            modifier = Modifier
+                                .minimumInteractiveComponentSize()
+                                .testTag("compare_btn_${pkg.id}")
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.CompareArrows,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = if (isCompared) "Added" else "Compare",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+
+                        Button(
+                            onClick = onClick,
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                            modifier = Modifier
+                                .minimumInteractiveComponentSize()
+                                .testTag("details_btn_${pkg.id}")
+                        ) {
+                            Text(
+                                text = "View Details",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AgencyLogoAvatar(
+    logoUrl: String,
+    agencyName: String,
+    modifier: Modifier = Modifier,
+    size: androidx.compose.ui.unit.Dp = 48.dp
+) {
+    val initials = remember(agencyName) {
+        val parts = agencyName.trim().split("\\s+".toRegex()).filter { it.isNotBlank() }
+        if (parts.size >= 2) {
+            "${parts[0].take(1)}${parts[1].take(1)}".uppercase()
+        } else {
+            agencyName.take(2).uppercase().ifBlank { "AG" }
+        }
+    }
+    val avatarBgColor = remember(agencyName) {
+        val colors = listOf(
+            Color(0xFF1E3A8A), Color(0xFF0F766E), Color(0xFFB45309),
+            Color(0xFF4338CA), Color(0xFF047857), Color(0xFFC2410C),
+            Color(0xFF6D28D9), Color(0xFF0369A1), Color(0xFFBE185D)
+        )
+        val idx = kotlin.math.abs(agencyName.hashCode()) % colors.size
+        colors[idx]
+    }
+
+    Surface(
+        shape = CircleShape,
+        color = avatarBgColor,
+        contentColor = Color.White,
+        modifier = modifier.size(size)
+    ) {
+        if (logoUrl.isNotBlank()) {
+            SubcomposeAsyncImage(
+                model = logoUrl,
+                contentDescription = agencyName,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+                loading = {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = initials,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = (size.value * 0.35).sp,
+                            color = Color.White
+                        )
+                    }
+                },
+                error = {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = initials,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = (size.value * 0.35).sp,
+                            color = Color.White
+                        )
+                    }
+                }
+            )
+        } else {
+            Box(contentAlignment = Alignment.Center) {
+                Text(
+                    text = initials,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = (size.value * 0.35).sp,
+                    color = Color.White
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun PartnerAgencyCard(
+    agency: Agency,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier
+            .width(300.dp)
+            .height(130.dp)
+            .clickable(onClick = onClick)
+            .testTag("agency_card_${agency.id}"),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = CardDefaults.outlinedCardBorder()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            // Top Row: Circular 48 dp logo + Agency Name & City on Left; Rating Pill on Right
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                AgencyLogoAvatar(
+                    logoUrl = agency.logoUrl,
+                    agencyName = agency.name,
+                    size = 48.dp
+                )
+
+                Spacer(modifier = Modifier.width(10.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = agency.name,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = agency.city,
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                // Rating pill: compact one-line pill "★ 4.9", maxLines = 1, softWrap = false, minimum width
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = TourGoldLight,
+                    contentColor = TourGoldDark,
+                    modifier = Modifier.widthIn(min = 52.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = "★ ${String.format(java.util.Locale.US, "%.1f", agency.rating)}",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
+                }
+            }
+
+            // Bottom row: Verified and Premium chips in FlowRow so chips move to next line instead of squeezing
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                if (agency.verified) {
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = TourTealLight,
+                        contentColor = TourTeal
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Verified,
+                                contentDescription = null,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(
+                                text = "Verified",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+                    }
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                ) {
+                    Text(
+                        text = agency.tier.replaceFirstChar { it.uppercase() },
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        softWrap = false,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
                 }
             }
         }

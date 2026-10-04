@@ -29,6 +29,7 @@ import com.example.data.repository.TourRepository
 import com.example.ui.components.EmptyState
 import com.example.ui.theme.TourGold
 import com.example.ui.theme.TourNavy
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -44,6 +45,9 @@ fun DestinationDetailScreen(
     val agencies by repository.agencies.collectAsState()
     val packages by repository.packages.collectAsState()
     val compareIds by repository.comparePackageIds.collectAsState()
+    val wishlist by repository.wishlist.collectAsState()
+    val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
 
     val destination = destinations.find { it.id == destinationId }
     val destinationPackages = packages.filter { it.destinationId == destinationId }
@@ -94,7 +98,8 @@ fun DestinationDetailScreen(
                     }
                 }
             )
-        }
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { innerPadding ->
         LazyColumn(
             modifier = Modifier
@@ -304,12 +309,31 @@ fun DestinationDetailScreen(
                 items(destinationPackages) { pkg ->
                     val agency = agencies.find { it.id == pkg.agencyId }
                     val isCompared = compareIds.contains(pkg.id)
+                    val isWishlisted = wishlist.any { it.packageId == pkg.id }
 
                     TourPackageCard(
                         pkg = pkg,
                         agency = agency,
                         destination = destination,
                         isCompared = isCompared,
+                        isWishlisted = isWishlisted,
+                        onWishlistToggle = {
+                            val (saved, item) = repository.toggleWishlist(pkg.id)
+                            scope.launch {
+                                val res = snackbarHostState.showSnackbar(
+                                    message = if (saved) "Added to wishlist" else "Removed from wishlist",
+                                    actionLabel = "Undo",
+                                    duration = SnackbarDuration.Short
+                                )
+                                if (res == SnackbarResult.ActionPerformed && item != null) {
+                                    if (saved) {
+                                        repository.removeFromWishlist(pkg.id)
+                                    } else {
+                                        repository.restoreWishlistItem(item)
+                                    }
+                                }
+                            }
+                        },
                         onCompareToggle = { repository.toggleCompare(pkg.id) },
                         onClick = { onNavigateToPackage(pkg.id) },
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)

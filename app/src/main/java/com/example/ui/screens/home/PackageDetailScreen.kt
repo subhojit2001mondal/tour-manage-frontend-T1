@@ -109,12 +109,16 @@ fun PackageDetailScreen(
                             val (saved, item) = repository.toggleWishlist(pkg.id)
                             scope.launch {
                                 val res = snackbarHostState.showSnackbar(
-                                    message = if (saved) "Saved to Wishlist" else "Removed from Wishlist",
-                                    actionLabel = if (!saved) "Undo" else null,
+                                    message = if (saved) "Added to wishlist" else "Removed from wishlist",
+                                    actionLabel = "Undo",
                                     duration = SnackbarDuration.Short
                                 )
                                 if (res == SnackbarResult.ActionPerformed && item != null) {
-                                    repository.restoreWishlistItem(item)
+                                    if (saved) {
+                                        repository.removeFromWishlist(pkg.id)
+                                    } else {
+                                        repository.restoreWishlistItem(item)
+                                    }
                                 }
                             }
                         },

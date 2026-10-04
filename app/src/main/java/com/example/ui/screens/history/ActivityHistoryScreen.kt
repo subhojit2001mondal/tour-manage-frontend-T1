@@ -50,6 +50,9 @@ fun ActivityHistoryScreen(
     val agencies by repository.agencies.collectAsState()
     val destinations by repository.destinations.collectAsState()
     val compareIds by repository.comparePackageIds.collectAsState()
+    val wishlist by repository.wishlist.collectAsState()
+    val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
 
     // Bookings tab filters
     var bookingQuery by remember { mutableStateOf("") }

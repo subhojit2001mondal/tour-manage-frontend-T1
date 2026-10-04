@@ -60,14 +60,15 @@ fun RatingBadge(
     showStar: Boolean = true
 ) {
     Surface(
-        modifier = modifier,
+        modifier = modifier.widthIn(min = if (showStar) 44.dp else 30.dp),
         shape = RoundedCornerShape(8.dp),
         color = TourGoldLight,
         contentColor = TourGoldDark
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
         ) {
             if (showStar) {
                 Icon(
@@ -79,9 +80,11 @@ fun RatingBadge(
                 Spacer(modifier = Modifier.width(3.dp))
             }
             Text(
-                text = String.format("%.1f", rating),
+                text = String.format(java.util.Locale.US, "%.1f", rating),
                 fontWeight = FontWeight.Bold,
-                fontSize = 12.sp
+                fontSize = 12.sp,
+                maxLines = 1,
+                softWrap = false
             )
         }
     }
@@ -116,7 +119,9 @@ fun VerifiedAgencyBadge(
                     Text(
                         text = "Verified",
                         fontSize = 10.sp,
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
             }
@@ -132,6 +137,8 @@ fun VerifiedAgencyBadge(
                 text = tier.replaceFirstChar { it.uppercase() },
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                softWrap = false,
                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
             )
         }

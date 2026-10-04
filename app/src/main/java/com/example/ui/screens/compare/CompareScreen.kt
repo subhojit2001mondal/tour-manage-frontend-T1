@@ -233,29 +233,35 @@ fun CompareScreen(
                                                     overflow = TextOverflow.Ellipsis,
                                                     modifier = Modifier.weight(1f)
                                                 )
-                                                val isWishlisted = repository.isWishlisted(pkg.id)
+                                                val isWishlisted = wishlist.any { it.packageId == pkg.id }
                                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                                     IconButton(
                                                         onClick = {
                                                             val (saved, item) = repository.toggleWishlist(pkg.id)
                                                             scope.launch {
                                                                 val res = snackbarHostState.showSnackbar(
-                                                                    message = if (saved) "Saved to Wishlist" else "Removed from Wishlist",
-                                                                    actionLabel = if (!saved) "Undo" else null,
+                                                                    message = if (saved) "Added to wishlist" else "Removed from wishlist",
+                                                                    actionLabel = "Undo",
                                                                     duration = SnackbarDuration.Short
                                                                 )
                                                                 if (res == SnackbarResult.ActionPerformed && item != null) {
-                                                                    repository.restoreWishlistItem(item)
+                                                                    if (saved) {
+                                                                        repository.removeFromWishlist(pkg.id)
+                                                                    } else {
+                                                                        repository.restoreWishlistItem(item)
+                                                                    }
                                                                 }
                                                             }
                                                         },
-                                                        modifier = Modifier.size(24.dp)
+                                                        modifier = Modifier
+                                                            .size(36.dp)
+                                                            .minimumInteractiveComponentSize()
                                                     ) {
                                                         Icon(
                                                             imageVector = if (isWishlisted) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
                                                             contentDescription = "Wishlist",
                                                             tint = if (isWishlisted) StatusRed else MaterialTheme.colorScheme.onSurfaceVariant,
-                                                            modifier = Modifier.size(16.dp)
+                                                            modifier = Modifier.size(18.dp)
                                                         )
                                                     }
                                                     IconButton(
