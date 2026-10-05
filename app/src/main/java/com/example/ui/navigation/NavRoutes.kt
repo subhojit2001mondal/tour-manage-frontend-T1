@@ -17,6 +17,7 @@ sealed class Screen(val route: String) {
     data object Auth : Screen("auth")
     data object Wishlist : Screen("wishlist")
     data object Notifications : Screen("notifications")
+    data object Update : Screen("update")
     data object History : Screen("history?tab={tab}") {
         fun createRoute(tab: Int = 0) = "history?tab=$tab"
     }

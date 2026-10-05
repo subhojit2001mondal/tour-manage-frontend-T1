@@ -28,7 +28,7 @@ import coil.compose.AsyncImage
 import com.example.data.models.NotificationPreferences
 import com.example.data.repository.AuthRepository
 import com.example.data.repository.TourRepository
-import com.example.ui.theme.TourNavy
+import com.example.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -224,8 +224,9 @@ fun ProfileScreen(
                         )
 
                         Text(
-                            text = currentUser?.email ?: "",
+                            text = if (currentUser?.isDemo == true) "Logged in as ${currentUser?.email}" else (currentUser?.email ?: ""),
                             fontSize = 13.sp,
+                            fontWeight = if (currentUser?.isDemo == true) FontWeight.SemiBold else FontWeight.Normal,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
 
@@ -239,29 +240,57 @@ fun ProfileScreen(
 
                         Spacer(modifier = Modifier.height(6.dp))
 
-                        // Green "Logged in" chip as requested
-                        Surface(
-                            shape = RoundedCornerShape(16.dp),
-                            color = Color(0xFFDCFCE7),
-                            contentColor = Color(0xFF15803D),
-                            border = BorderStroke(1.dp, Color(0xFF86EFAC)),
-                            modifier = Modifier.testTag("logged_in_chip")
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                        if (currentUser?.isDemo == true) {
+                            // Gold DEMO chip in demo mode
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = TourGoldLight,
+                                contentColor = TourGoldDark,
+                                border = BorderStroke(1.dp, TourGoldDark.copy(alpha = 0.5f)),
+                                modifier = Modifier.testTag("logged_in_chip")
                             ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(8.dp)
-                                        .background(Color(0xFF16A34A), CircleShape)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "Logged in",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 12.sp
-                                )
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(8.dp)
+                                            .background(TourGoldDark, CircleShape)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "DEMO",
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontSize = 12.sp
+                                    )
+                                }
+                            }
+                        } else {
+                            // Green "Logged in" chip
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = Color(0xFFDCFCE7),
+                                contentColor = Color(0xFF15803D),
+                                border = BorderStroke(1.dp, Color(0xFF86EFAC)),
+                                modifier = Modifier.testTag("logged_in_chip")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(8.dp)
+                                            .background(Color(0xFF16A34A), CircleShape)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "Logged in",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp
+                                    )
+                                }
                             }
                         }
                     }

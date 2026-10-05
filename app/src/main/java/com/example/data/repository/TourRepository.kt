@@ -25,6 +25,10 @@ import java.util.Calendar
 import java.util.Date
 import java.util.UUID
 
+enum class ThemeMode {
+    SYSTEM, LIGHT, DARK
+}
+
 class TourRepository(
     private val context: Context,
     val authRepo: AuthRepository
@@ -33,6 +37,26 @@ class TourRepository(
     private val firestore: FirebaseFirestore by lazy { FirebaseProvider.getFirestore(context) }
     private val httpClient = OkHttpClient()
     private val scope = CoroutineScope(Dispatchers.IO)
+
+    // Theme Mode with DataStore persistence
+    private val appDataStore = com.example.data.AppDataStore(context)
+    private val themePrefs = context.getSharedPreferences("tour_theme_prefs", Context.MODE_PRIVATE)
+    private val _themeMode = MutableStateFlow(
+        when (themePrefs.getString("theme_mode", "SYSTEM")) {
+            "LIGHT" -> ThemeMode.LIGHT
+            "DARK" -> ThemeMode.DARK
+            else -> ThemeMode.SYSTEM
+        }
+    )
+    val themeMode: StateFlow<ThemeMode> = _themeMode.asStateFlow()
+
+    fun setThemeMode(mode: ThemeMode) {
+        _themeMode.value = mode
+        themePrefs.edit().putString("theme_mode", mode.name).apply()
+        scope.launch {
+            appDataStore.setThemeMode(mode)
+        }
+    }
 
     // Shared StateFlows with WhileSubscribed
     private val _destinations = MutableStateFlow<List<Destination>>(emptyList())
@@ -120,14 +144,27 @@ class TourRepository(
         _wishlist.value = loadGuestWishlist()
         setupListeners()
 
+        scope.launch {
+            appDataStore.themeModeFlow.collect { mode ->
+                _themeMode.value = mode
+            }
+        }
+
         // Observe Auth changes to load customer-specific data
         scope.launch {
             authRepo.currentUser.collect { user ->
                 if (user != null) {
                     val uid = user.uid
-                    loadCustomerLocalData(uid)
-                    setupCustomerBookingsListener(uid)
-                    setupCustomerChatListener(uid)
+                    if (user.isDemo) {
+                        bookingsListener?.remove()
+                        chatListener?.remove()
+                        loadCustomerLocalData(uid)
+                        loadDemoBookings(uid)
+                    } else {
+                        loadCustomerLocalData(uid)
+                        setupCustomerBookingsListener(uid)
+                        setupCustomerChatListener(uid)
+                    }
                 } else {
                     bookingsListener?.remove()
                     chatListener?.remove()
@@ -891,6 +928,7 @@ class TourRepository(
 
     // CHAT ACTIONS
     suspend fun sendChatMessage(customerId: String, text: String): Result<String> = withContext(Dispatchers.IO) {
+        val isDemo = authRepo.currentUser.value?.isDemo == true || authRepo.isDemoSession.value
         val currentList = _chatMessages.value.toMutableList()
         val userMsg = ChatMessage(
             id = "msg_${System.currentTimeMillis()}",
@@ -901,7 +939,7 @@ class TourRepository(
         currentList.add(userMsg)
         _chatMessages.value = currentList
 
-        if (API_BASE_URL.isNotBlank()) {
+        if (!isDemo && API_BASE_URL.isNotBlank()) {
             try {
                 val token = authRepo.getIdToken() ?: ""
                 val chatId = "chat_$customerId"
@@ -944,7 +982,7 @@ class TourRepository(
             ChatMessage(
                 id = "handover_${System.currentTimeMillis()}",
                 sender = "staff",
-                text = "Hello! A Tour Manage support specialist has joined the chat. How may we assist you with your booking, vehicle requests, or special arrangements?",
+                text = "Namaste! I'm Priya from Tour Manage Customer Care. I have taken over this chat. How can I assist you with your booking or travel plans today?",
                 createdAt = Timestamp.now()
             )
         )
@@ -957,6 +995,14 @@ class TourRepository(
         phone: String,
         topic: String
     ): Result<String> = withContext(Dispatchers.IO) {
+        val isDemo = authRepo.currentUser.value?.isDemo == true || authRepo.isDemoSession.value
+        if (isDemo) {
+            getCustomerPrefs(customerId).edit()
+                .putString("last_callback_topic", topic)
+                .putLong("last_callback_time", System.currentTimeMillis())
+                .apply()
+            return@withContext Result.success("Callback confirmed! Our travel expert will call you at $phone shortly.")
+        }
         if (API_BASE_URL.isNotBlank()) {
             try {
                 val token = authRepo.getIdToken() ?: ""
@@ -984,6 +1030,62 @@ class TourRepository(
         }
     }
 
+    // DEMO BOOKING PERSISTENCE
+    private fun loadDemoBookings(uid: String) {
+        val prefs = getCustomerPrefs(uid)
+        val json = prefs.getString("demo_bookings_json", "[]") ?: "[]"
+        try {
+            val arr = JSONArray(json)
+            val list = mutableListOf<Booking>()
+            for (i in 0 until arr.length()) {
+                val obj = arr.getJSONObject(i)
+                list.add(
+                    Booking(
+                        id = obj.getString("id"),
+                        bookingCode = obj.getString("bookingCode"),
+                        customerId = uid,
+                        packageId = obj.getString("packageId"),
+                        agencyId = obj.optString("agencyId", ""),
+                        destinationId = obj.optString("destinationId", ""),
+                        departureId = obj.optString("departureId", ""),
+                        travelDate = Timestamp.now(),
+                        totalAmount = obj.optLong("totalAmount", 0L),
+                        status = obj.optString("status", "confirmed"),
+                        paymentStatus = obj.optString("paymentStatus", "paid"),
+                        packageTitle = obj.optString("packageTitle", ""),
+                        destinationName = obj.optString("destinationName", ""),
+                        agencyName = obj.optString("agencyName", ""),
+                        notes = "Demo booking, no real seats reserved"
+                    )
+                )
+            }
+            _myBookings.value = list
+        } catch (e: Exception) {
+            _myBookings.value = emptyList()
+        }
+    }
+
+    private fun saveDemoBookings(uid: String, list: List<Booking>) {
+        val arr = JSONArray()
+        list.forEach { b ->
+            arr.put(JSONObject().apply {
+                put("id", b.id)
+                put("bookingCode", b.bookingCode)
+                put("packageId", b.packageId)
+                put("agencyId", b.agencyId)
+                put("destinationId", b.destinationId)
+                put("departureId", b.departureId)
+                put("totalAmount", b.totalAmount)
+                put("status", b.status)
+                put("paymentStatus", b.paymentStatus)
+                put("packageTitle", b.packageTitle)
+                put("destinationName", b.destinationName)
+                put("agencyName", b.agencyName)
+            })
+        }
+        getCustomerPrefs(uid).edit().putString("demo_bookings_json", arr.toString()).apply()
+    }
+
     // BOOKING OPERATIONS
     suspend fun holdBooking(
         pkg: TourPackage,
@@ -991,8 +1093,21 @@ class TourRepository(
         travelers: List<Traveler>,
         notes: String
     ): Result<BookingHoldResponse> = withContext(Dispatchers.IO) {
+        val isDemo = authRepo.currentUser.value?.isDemo == true || authRepo.isDemoSession.value
         val totalAmount = pkg.pricePerPerson * travelers.size
-        val code = "TM-" + (100000..999999).random()
+        val code = if (isDemo) "DEMO-" + (1000..9999).random() else "TM-" + (100000..999999).random()
+
+        if (isDemo) {
+            return@withContext Result.success(
+                BookingHoldResponse(
+                    bookingId = "demo_bk_${System.currentTimeMillis()}",
+                    bookingCode = code,
+                    mode = "demo",
+                    totalAmount = totalAmount,
+                    razorpayOrderId = null
+                )
+            )
+        }
 
         if (API_BASE_URL.isNotBlank()) {
             try {
@@ -1064,7 +1179,54 @@ class TourRepository(
         demoResult: Boolean
     ): Result<Booking> = withContext(Dispatchers.IO) {
         val user = authRepo.currentUser.value
+        val isDemo = user?.isDemo == true || authRepo.isDemoSession.value
         val customerId = user?.uid ?: "guest_${System.currentTimeMillis()}"
+        val effectiveCode = if (isDemo && !bookingCode.startsWith("DEMO-")) "DEMO-${(1000..9999).random()}" else bookingCode
+
+        if (isDemo) {
+            if (demoResult) {
+                val destination = _destinations.value.find { it.id == pkg.destinationId }
+                val agency = _agencies.value.find { it.id == pkg.agencyId }
+                val confirmedBooking = Booking(
+                    id = bookingId,
+                    bookingCode = effectiveCode,
+                    customerId = customerId,
+                    packageId = pkg.id,
+                    agencyId = pkg.agencyId,
+                    destinationId = pkg.destinationId,
+                    departureId = departure.id,
+                    travelDate = departure.date ?: Timestamp.now(),
+                    travelers = travelers,
+                    totalAmount = totalAmount,
+                    commissionAmount = (totalAmount * 0.1).toLong(),
+                    status = "confirmed",
+                    paymentStatus = "paid",
+                    holdExpiresAt = null,
+                    createdAt = Timestamp.now(),
+                    packageTitle = pkg.title,
+                    destinationName = destination?.name ?: "India",
+                    agencyName = agency?.name ?: "Partner Agency",
+                    notes = "Demo booking, no real seats reserved"
+                )
+                val current = _myBookings.value.toMutableList()
+                current.add(0, confirmedBooking)
+                _myBookings.value = current
+                saveDemoBookings(customerId, current)
+
+                addNotificationInternal(
+                    uid = customerId,
+                    title = "Demo Booking Confirmed: $effectiveCode",
+                    message = "Demo booking, no real seats reserved. Tour '${pkg.title}' has been confirmed.",
+                    type = "booking",
+                    targetType = "booking",
+                    targetId = bookingId,
+                    channelId = TourNotificationHelper.CHANNEL_ID_BOOKINGS
+                )
+                return@withContext Result.success(confirmedBooking)
+            } else {
+                return@withContext Result.failure(Exception("Payment was declined or failed during checkout. Please try again."))
+            }
+        }
 
         if (API_BASE_URL.isNotBlank()) {
             try {
@@ -1131,22 +1293,41 @@ class TourRepository(
     }
 
     private fun generateBotReply(prompt: String, mode: String): String {
-        val lower = prompt.lowercase()
+        val lower = prompt.lowercase().trim()
+
+        val destMatch = _destinations.value.find { lower.contains(it.name.lowercase()) || lower.contains(it.state.lowercase()) }
+        if (destMatch != null) {
+            val matchingPkgs = _packages.value.filter { it.destinationId == destMatch.id }
+            val cheapest = matchingPkgs.minByOrNull { it.pricePerPerson }
+            val count = matchingPkgs.size
+            if (cheapest != null) {
+                return "We have $count package${if (count > 1) "s" else ""} for ${destMatch.name}, ${destMatch.state}! Starting from ${formatInr(cheapest.pricePerPerson)} per person ('${cheapest.title}', ${cheapest.days}D/${cheapest.nights}N). Best season to visit is ${destMatch.bestSeason}."
+            }
+        }
+
+        val agencyMatch = _agencies.value.find { lower.contains(it.name.lowercase()) }
+        if (agencyMatch != null) {
+            val agencyPkgs = _packages.value.filter { it.agencyId == agencyMatch.id }
+            return "${agencyMatch.name} is an active partner agency based in ${agencyMatch.city} with rating ★${agencyMatch.rating} (${agencyMatch.tier.replaceFirstChar { it.uppercase() }} tier). They currently offer ${agencyPkgs.size} tour package(s) on Tour Manage."
+        }
+
         return when {
-            lower.contains("price") || lower.contains("cost") || lower.contains("budget") ->
-                "All tour package prices listed on Tour Manage are guaranteed direct from our verified local agencies with zero hidden markups. You can also filter packages by your exact budget range on the Home screen!"
-            lower.contains("kerala") ->
-                "Kerala packages feature tranquil Alleppey houseboats, Munnar tea estates, and authentic Ayurvedic experiences. Both AC Sedan and Deluxe Houseboat inclusions are detailed on the package page!"
-            lower.contains("kashmir") ->
-                "Our Kashmir packages include Dal Lake Shikara rides, Gulmarg Gondola transfers, and certified local guides. Check the availability calendar for upcoming departures!"
-            lower.contains("hotel") || lower.contains("stay") ->
-                "Every package has a dedicated 'Hotel' section showing the exact property name, rating category, room type, and included amenities so you know exactly where you'll be resting."
+            lower.contains("price") || lower.contains("cost") || lower.contains("budget") || lower.contains("cheap") -> {
+                val minPkg = _packages.value.minByOrNull { it.pricePerPerson }
+                if (minPkg != null) {
+                    "Tour packages start from ${formatInr(minPkg.pricePerPerson)} per person ('${minPkg.title}'). All rates are direct from verified local agencies with zero hidden booking charges!"
+                } else {
+                    "All tour package prices listed on Tour Manage are guaranteed direct from our verified local agencies with zero hidden markups. You can also filter packages by your exact budget range on the Home screen!"
+                }
+            }
+            lower.contains("hotel") || lower.contains("stay") || lower.contains("room") ->
+                "Every package includes detailed hotel specifications (category from 3-star to 5-star resort/houseboat, room type, and occupancy). Check the Hotel tab in package details for exact photos and amenities."
             lower.contains("food") || lower.contains("meal") || lower.contains("jain") || lower.contains("veg") ->
-                "We provide clear meal plan details (Breakfast, MAP, or all meals) and cater to pure vegetarian and Jain dietary preferences on request with local fresh cuisine."
-            lower.contains("cab") || lower.contains("car") || lower.contains("vehicle") ->
-                "Vehicle specifications (AC Sedan, SUV, or Tempo Traveller) include airport/railway pickup and seating capacity. You can verify this in the Vehicle section of each package!"
+                "We provide clear meal plan details (Breakfast, Breakfast + Dinner, or All Meals) with pure vegetarian and Jain dietary preferences catered upon request."
+            lower.contains("cab") || lower.contains("car") || lower.contains("vehicle") || lower.contains("transfer") ->
+                "Vehicle specifications (AC Sedan, SUV, or Tempo Traveller) include airport/railway station pickup and all sightseeing transfers. Check the Vehicle section on each package!"
             else ->
-                "Thank you for contacting Tour Manage! I can assist you with comparing tour packages, checking departure dates, customized itineraries, or you can tap 'Talk to a human' to connect with our operations desk."
+                "Namaste! Tour Manage Assistant is ready to help. You can ask about destination packages, pricing, hotels, vehicles, or tap 'Talk to a human' to connect with our verified customer desk."
         }
     }
 

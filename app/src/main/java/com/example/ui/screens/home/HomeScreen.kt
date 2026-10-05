@@ -50,7 +50,8 @@ fun HomeScreen(
     onNavigateToProfile: () -> Unit,
     onNavigateToCompare: () -> Unit,
     onNavigateToWishlist: () -> Unit,
-    onNavigateToNotifications: () -> Unit
+    onNavigateToNotifications: () -> Unit,
+    onOpenDrawer: () -> Unit = {}
 ) {
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -204,6 +205,20 @@ fun HomeScreen(
                         .background(MaterialTheme.colorScheme.surface)
                 ) {
                     TopAppBar(
+                        navigationIcon = {
+                            IconButton(
+                                onClick = onOpenDrawer,
+                                modifier = Modifier
+                                    .testTag("hamburger_menu_button")
+                                    .minimumInteractiveComponentSize()
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Menu,
+                                    contentDescription = "Open navigation menu",
+                                    tint = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        },
                         title = {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Surface(
@@ -285,26 +300,59 @@ fun HomeScreen(
                                 }
                             }
 
-                            // Profile avatar
+                            // Profile avatar with DEMO chip if demo mode
                             IconButton(
                                 onClick = onNavigateToProfile,
                                 modifier = Modifier
                                     .testTag("profile_button")
                                     .minimumInteractiveComponentSize()
                             ) {
-                                if (currentUser != null) {
-                                    Surface(
-                                        shape = CircleShape,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        contentColor = Color.White,
-                                        modifier = Modifier.size(30.dp)
-                                    ) {
-                                        Box(contentAlignment = Alignment.Center) {
-                                            Text(
-                                                text = userInitials,
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 11.sp
-                                            )
+                                val user = currentUser
+                                if (user != null) {
+                                    if (user.isDemo) {
+                                        BadgedBox(
+                                            badge = {
+                                                Badge(
+                                                    containerColor = TourGoldLight,
+                                                    contentColor = TourGoldDark
+                                                ) {
+                                                    Text(
+                                                        text = "DEMO",
+                                                        fontSize = 8.sp,
+                                                        fontWeight = FontWeight.ExtraBold
+                                                    )
+                                                }
+                                            }
+                                        ) {
+                                            Surface(
+                                                shape = CircleShape,
+                                                color = MaterialTheme.colorScheme.primary,
+                                                contentColor = Color.White,
+                                                modifier = Modifier.size(30.dp)
+                                            ) {
+                                                Box(contentAlignment = Alignment.Center) {
+                                                    Text(
+                                                        text = userInitials,
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 11.sp
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            contentColor = Color.White,
+                                            modifier = Modifier.size(30.dp)
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Text(
+                                                    text = userInitials,
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 11.sp
+                                                )
+                                            }
                                         }
                                     }
                                 } else {

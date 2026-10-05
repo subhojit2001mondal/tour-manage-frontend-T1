@@ -174,7 +174,39 @@ fun SupportScreen(
                         }
                     }
 
-                    if (API_BASE_URL.isBlank()) {
+                    if (currentUser?.isDemo == true || authRepo.isDemoSession.collectAsState().value) {
+                        Surface(
+                            color = TourGoldLight,
+                            contentColor = TourGoldDark,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("demo_mode_chat_banner")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = TourGoldDark,
+                                    contentColor = Color.White
+                                ) {
+                                    Text(
+                                        text = "DEMO MODE",
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "On-device assistant answers from cached destinations, agencies, and packages.",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    } else if (API_BASE_URL.isBlank()) {
                         BackendNotConnectedBanner(feature = "Real-time server chat sync")
                     }
 

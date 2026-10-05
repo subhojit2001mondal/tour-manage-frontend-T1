@@ -48,6 +48,24 @@ import org.json.JSONObject
 const val ENABLE_GOOGLE_SIGNIN = false
 
 /**
+ * Flag to enable/disable Demo Login as requested.
+ * Set to true for evaluation; user can set to false before production.
+ */
+const val ENABLE_DEMO_LOGIN = true
+
+/**
+ * Common AppUser model representing either an authenticated Firebase customer
+ * or an on-device Demo traveler.
+ */
+data class AppUser(
+    val uid: String,
+    val email: String?,
+    val displayName: String?,
+    val photoUrl: String? = null,
+    val isDemo: Boolean = false
+)
+
+/**
  * GOOGLE_WEB_CLIENT_ID constant as required by user brief.
  * Set to empty string until user provides the real Google Cloud OAuth 2.0 Web Client ID.
  */
@@ -67,8 +85,14 @@ class AuthRepository(private val context: Context) {
     private val httpClient = OkHttpClient()
     private val scope = CoroutineScope(Dispatchers.IO)
 
-    private val _currentUser = MutableStateFlow<FirebaseUser?>(null)
-    val currentUser: StateFlow<FirebaseUser?> = _currentUser.asStateFlow()
+    private val prefs = context.getSharedPreferences("tour_manage_auth_prefs", Context.MODE_PRIVATE)
+    private val appDataStore = com.example.data.AppDataStore(context)
+
+    private val _currentUser = MutableStateFlow<AppUser?>(null)
+    val currentUser: StateFlow<AppUser?> = _currentUser.asStateFlow()
+
+    private val _isDemoSession = MutableStateFlow(false)
+    val isDemoSession: StateFlow<Boolean> = _isDemoSession.asStateFlow()
 
     private val _customerProfile = MutableStateFlow<CustomerProfile?>(null)
     val customerProfile: StateFlow<CustomerProfile?> = _customerProfile.asStateFlow()
@@ -88,15 +112,56 @@ class AuthRepository(private val context: Context) {
     private var customerSnapshotListener: ListenerRegistration? = null
     private var pendingRoute: String? = null
 
-    private val prefs = context.getSharedPreferences("tour_manage_auth_prefs", Context.MODE_PRIVATE)
+    val firebaseUser: FirebaseUser? get() = auth.currentUser
 
     init {
         try {
-            _currentUser.value = auth.currentUser
+            val isDemoActive = prefs.getBoolean("demo_session_active", false)
+            if (isDemoActive) {
+                val demoEmail = prefs.getString("demo_email", "demo@tourmanage.com") ?: "demo@tourmanage.com"
+                val demoName = prefs.getString("demo_name", "Demo Traveler") ?: "Demo Traveler"
+                _isDemoSession.value = true
+                val demoAppUser = AppUser(
+                    uid = "demo_${kotlin.math.abs(demoEmail.hashCode())}",
+                    email = demoEmail,
+                    displayName = demoName,
+                    isDemo = true
+                )
+                _currentUser.value = demoAppUser
+                _customerProfile.value = CustomerProfile(
+                    uid = demoAppUser.uid,
+                    name = demoName,
+                    phone = "9876543210",
+                    email = demoEmail,
+                    createdAt = Timestamp.now()
+                )
+            } else {
+                val fbUser = auth.currentUser
+                if (fbUser != null) {
+                    _currentUser.value = AppUser(
+                        uid = fbUser.uid,
+                        email = fbUser.email,
+                        displayName = fbUser.displayName,
+                        photoUrl = fbUser.photoUrl?.toString(),
+                        isDemo = false
+                    )
+                }
+            }
+
             auth.addAuthStateListener { firebaseAuth ->
                 val user = firebaseAuth.currentUser
-                _currentUser.value = user
+                if (_isDemoSession.value) {
+                    // Do not override active demo session unless a real user logs in
+                    return@addAuthStateListener
+                }
                 if (user != null) {
+                    _currentUser.value = AppUser(
+                        uid = user.uid,
+                        email = user.email,
+                        displayName = user.displayName,
+                        photoUrl = user.photoUrl?.toString(),
+                        isDemo = false
+                    )
                     loadProfileLocally(user)
                     attachCustomerFirestoreListener(user)
                     // Retry saving to Firestore on launch if needed (Requirement 4)
@@ -106,6 +171,7 @@ class AuthRepository(private val context: Context) {
                     syncProfileWithBackend(user)
                 } else {
                     detachCustomerFirestoreListener()
+                    _currentUser.value = null
                     _customerProfile.value = null
                     _customerDocExists.value = false
                     _firestoreSaveState.value = FirestoreCustomerSaveState.Idle
@@ -116,6 +182,55 @@ class AuthRepository(private val context: Context) {
             Log.e(TAG, "Error attaching auth state listener", e)
             _authError.value = formatAuthError(e)
         }
+    }
+
+    /**
+     * Starts a local demo session without Firebase or Firestore direct calls.
+     */
+    fun loginDemo(email: String, name: String?): Result<AppUser> {
+        val cleanEmail = email.trim()
+        if (!cleanEmail.contains("@")) {
+            val err = "Please enter a valid email address for demo login"
+            _authError.value = err
+            return Result.failure(IllegalArgumentException(err))
+        }
+
+        val effectiveName = if (!name.isNullOrBlank()) {
+            name.trim()
+        } else {
+            cleanEmail.substringBefore("@").replaceFirstChar { it.uppercase() }
+        }
+
+        prefs.edit()
+            .putBoolean("demo_session_active", true)
+            .putString("demo_email", cleanEmail)
+            .putString("demo_name", effectiveName)
+            .apply()
+
+        scope.launch {
+            appDataStore.saveDemoSession(cleanEmail, effectiveName)
+        }
+
+        _isDemoSession.value = true
+        val demoUser = AppUser(
+            uid = "demo_${kotlin.math.abs(cleanEmail.hashCode())}",
+            email = cleanEmail,
+            displayName = effectiveName,
+            photoUrl = null,
+            isDemo = true
+        )
+
+        _currentUser.value = demoUser
+        _customerProfile.value = CustomerProfile(
+            uid = demoUser.uid,
+            name = effectiveName,
+            phone = "9876543210",
+            email = cleanEmail,
+            createdAt = Timestamp.now()
+        )
+        _isPhoneMissing.value = false
+        _authError.value = null
+        return Result.success(demoUser)
     }
 
     fun setPendingRoute(route: String?) {
@@ -327,7 +442,14 @@ class AuthRepository(private val context: Context) {
                 createdAt = Timestamp.now()
             )
             _isPhoneMissing.value = false
-            _currentUser.value = user
+            _isDemoSession.value = false
+            _currentUser.value = AppUser(
+                uid = user.uid,
+                email = user.email ?: email.trim(),
+                displayName = name.trim(),
+                photoUrl = null,
+                isDemo = false
+            )
 
             // Requirement 2: Direct write to Firestore customers/{uid}
             saveCustomerToFirestore(user, name.trim(), phone.trim())
@@ -354,7 +476,14 @@ class AuthRepository(private val context: Context) {
             _authError.value = null
             val result = auth.signInWithEmailAndPassword(email.trim(), password).await()
             val user = result.user ?: throw IllegalStateException("Login returned null")
-            _currentUser.value = user
+            _isDemoSession.value = false
+            _currentUser.value = AppUser(
+                uid = user.uid,
+                email = user.email,
+                displayName = user.displayName,
+                photoUrl = user.photoUrl?.toString(),
+                isDemo = false
+            )
             loadProfileLocally(user)
 
             // Requirement 2: Direct write to Firestore customers/{uid} after every login
@@ -426,7 +555,14 @@ class AuthRepository(private val context: Context) {
             val authResult = auth.signInWithCredential(firebaseCredential).await()
             val user = authResult.user ?: throw IllegalStateException("Firebase returned null user from Google credentials")
 
-            _currentUser.value = user
+            _isDemoSession.value = false
+            _currentUser.value = AppUser(
+                uid = user.uid,
+                email = user.email,
+                displayName = user.displayName,
+                photoUrl = user.photoUrl?.toString(),
+                isDemo = false
+            )
             loadProfileLocally(user)
             saveCustomerToFirestore(user)
             attachCustomerFirestoreListener(user)
@@ -450,6 +586,11 @@ class AuthRepository(private val context: Context) {
     }
 
     fun completeProfilePhone(phone: String) {
+        if (_isDemoSession.value) {
+            _customerProfile.value = _customerProfile.value?.copy(phone = phone.trim())
+            _isPhoneMissing.value = false
+            return
+        }
         val user = auth.currentUser ?: return
         val currentName = _customerProfile.value?.name ?: user.displayName ?: "Traveler"
         prefs.edit()
@@ -471,6 +612,14 @@ class AuthRepository(private val context: Context) {
     }
 
     fun updateProfileInfo(name: String, phone: String) {
+        if (_isDemoSession.value) {
+            val curr = _customerProfile.value
+            _customerProfile.value = curr?.copy(name = name.trim(), phone = phone.trim())
+            prefs.edit().putString("demo_name", name.trim()).apply()
+            _currentUser.value = _currentUser.value?.copy(displayName = name.trim())
+            _isPhoneMissing.value = phone.trim().isBlank()
+            return
+        }
         val user = auth.currentUser ?: return
         prefs.edit()
             .putString("user_name_${user.uid}", name.trim())
@@ -527,7 +676,15 @@ class AuthRepository(private val context: Context) {
 
     fun logOut() {
         try {
-            auth.signOut()
+            if (_isDemoSession.value) {
+                prefs.edit().remove("demo_session_active").remove("demo_email").remove("demo_name").apply()
+                scope.launch {
+                    appDataStore.clearDemoSession()
+                }
+                _isDemoSession.value = false
+            } else {
+                auth.signOut()
+            }
             detachCustomerFirestoreListener()
             _currentUser.value = null
             _customerProfile.value = null

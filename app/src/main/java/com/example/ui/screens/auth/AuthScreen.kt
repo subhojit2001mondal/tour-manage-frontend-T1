@@ -30,8 +30,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.repository.AuthRepository
+import com.example.data.repository.ENABLE_DEMO_LOGIN
 import com.example.data.repository.ENABLE_GOOGLE_SIGNIN
 import com.example.ui.components.ErrorBanner
+import com.example.ui.theme.TourGoldDark
 import com.example.ui.theme.TourNavy
 import kotlinx.coroutines.launch
 
@@ -51,6 +53,11 @@ fun AuthScreen(
     // If user just logged in with Google and is missing phone, show "Complete your profile"
     var showPhonePrompt by remember { mutableStateOf(false) }
     var completePhoneInput by remember { mutableStateOf("") }
+
+    // Demo Login state
+    var showDemoLoginDialog by remember { mutableStateOf(false) }
+    var demoEmailInput by remember { mutableStateOf("traveler@tourmanage.demo") }
+    var demoNameInput by remember { mutableStateOf("Demo Traveler") }
 
     LaunchedEffect(currentUser, isPhoneMissing) {
         if (currentUser != null && isPhoneMissing) {
@@ -414,6 +421,30 @@ fun AuthScreen(
                 Text("Continue as guest (browsing only)", fontSize = 13.sp, color = MaterialTheme.colorScheme.primary)
             }
 
+            if (ENABLE_DEMO_LOGIN) {
+                Spacer(modifier = Modifier.height(4.dp))
+                OutlinedButton(
+                    onClick = { showDemoLoginDialog = true },
+                    modifier = Modifier
+                        .fillMaxWidth(0.9f)
+                        .testTag("demo_login_button"),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Science,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = TourGoldDark
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Demo login (instant test session)",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+
             Spacer(modifier = Modifier.height(16.dp))
 
             // Small Terms Text
@@ -479,6 +510,73 @@ fun AuthScreen(
                     onAuthSuccess()
                 }) {
                     Text("Skip for Now")
+                }
+            }
+        )
+    }
+
+    if (showDemoLoginDialog) {
+        AlertDialog(
+            onDismissRequest = { showDemoLoginDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Science, contentDescription = null, tint = TourGoldDark)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Demo Mode Login", fontWeight = FontWeight.Bold)
+                }
+            },
+            text = {
+                Column {
+                    Text(
+                        text = "Creates an on-device demo session with sample data and simulated booking/chat. No password required, and real customer records remain untouched.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = demoEmailInput,
+                        onValueChange = { demoEmailInput = it },
+                        label = { Text("Demo Email") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("demo_email_input"),
+                        singleLine = true,
+                        placeholder = { Text("traveler@demo.com") }
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = demoNameInput,
+                        onValueChange = { demoNameInput = it },
+                        label = { Text("Traveler Name (Optional)") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("demo_name_input"),
+                        singleLine = true,
+                        placeholder = { Text("e.g. Subhojit Mondal") }
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val res = authRepo.loginDemo(demoEmailInput, demoNameInput.ifBlank { null })
+                        if (res.isSuccess) {
+                            showDemoLoginDialog = false
+                            Toast.makeText(context, "Logged in as ${demoEmailInput.trim()}", Toast.LENGTH_SHORT).show()
+                            onAuthSuccess()
+                        } else {
+                            Toast.makeText(context, res.exceptionOrNull()?.message ?: "Invalid email", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.testTag("submit_demo_login_button")
+                ) {
+                    Text("Start Demo Session")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDemoLoginDialog = false }) {
+                    Text("Cancel")
                 }
             }
         )

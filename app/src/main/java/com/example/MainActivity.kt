@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.WindowInsets
@@ -20,7 +21,12 @@ import androidx.navigation.compose.*
 import androidx.navigation.navArgument
 import com.example.data.FirebaseProvider
 import com.example.data.repository.AuthRepository
+import com.example.data.repository.ThemeMode
 import com.example.data.repository.TourRepository
+import com.example.data.update.UpdateManager
+import com.example.data.update.UpdateStatus
+import com.example.data.update.createUpdateManager
+import com.example.ui.components.AppNavigationDrawer
 import com.example.ui.navigation.Screen
 import com.example.ui.navigation.bottomNavItems
 import com.example.ui.screens.auth.AuthScreen
@@ -36,13 +42,16 @@ import com.example.ui.screens.notifications.NotificationScreen
 import com.example.ui.screens.profile.ProfileScreen
 import com.example.ui.screens.support.SupportScreen
 import com.example.ui.screens.trips.MyTripsScreen
+import com.example.ui.screens.update.UpdateScreen
 import com.example.ui.screens.wishlist.WishlistScreen
 import com.example.ui.theme.TourManageTheme
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
     private lateinit var authRepository: AuthRepository
     private lateinit var tourRepository: TourRepository
+    private lateinit var updateManager: UpdateManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -53,14 +62,30 @@ class MainActivity : ComponentActivity() {
 
         authRepository = AuthRepository(applicationContext)
         tourRepository = TourRepository(applicationContext, authRepository)
+        updateManager = createUpdateManager(applicationContext)
 
         setContent {
-            TourManageTheme {
+            val themeMode by tourRepository.themeMode.collectAsState()
+            val isDark = when (themeMode) {
+                ThemeMode.LIGHT -> false
+                ThemeMode.DARK -> true
+                ThemeMode.SYSTEM -> isSystemInDarkTheme()
+            }
+            TourManageTheme(darkTheme = isDark) {
                 TourManageApp(
                     tourRepository = tourRepository,
-                    authRepository = authRepository
+                    authRepository = authRepository,
+                    updateManager = updateManager,
+                    themeMode = themeMode
                 )
             }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::updateManager.isInitialized) {
+            updateManager.onResume(this)
         }
     }
 }
@@ -68,11 +93,55 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun TourManageApp(
     tourRepository: TourRepository,
-    authRepository: AuthRepository
+    authRepository: AuthRepository,
+    updateManager: UpdateManager,
+    themeMode: ThemeMode
 ) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
+
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    val currentUser by authRepository.currentUser.collectAsState()
+    val customerProfile by authRepository.customerProfile.collectAsState()
+    val wishlist by tourRepository.wishlist.collectAsState()
+    val notifications by tourRepository.notifications.collectAsState()
+    val unreadNotifCount = remember(notifications) { notifications.count { !it.isRead } }
+
+    val isUpdateAvailable by updateManager.isUpdateAvailable.collectAsState()
+    val updateStatus by updateManager.status.collectAsState()
+
+    // Daily check on app open: check once a day and show snackbar "Update available" with button
+    LaunchedEffect(Unit) {
+        updateManager.checkDailyUpdate {
+            scope.launch {
+                val result = snackbarHostState.showSnackbar(
+                    message = "Update available",
+                    actionLabel = "View",
+                    duration = SnackbarDuration.Long
+                )
+                if (result == SnackbarResult.ActionPerformed) {
+                    navController.navigate(Screen.Update.route)
+                }
+            }
+        }
+    }
+
+    // Play flexible update completion snackbar: when state is DOWNLOADED show "Update ready, restart"
+    LaunchedEffect(updateStatus) {
+        if (updateStatus is UpdateStatus.Downloaded) {
+            val result = snackbarHostState.showSnackbar(
+                message = "Update ready, restart",
+                actionLabel = "Restart",
+                duration = SnackbarDuration.Indefinite
+            )
+            if (result == SnackbarResult.ActionPerformed) {
+                updateManager.completeUpdate()
+            }
+        }
+    }
 
     val isBottomBarVisible = currentRoute in listOf(
         Screen.Home.route,
@@ -82,78 +151,112 @@ fun TourManageApp(
         Screen.MyTrips.route
     )
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        contentWindowInsets = WindowInsets.navigationBars,
-        bottomBar = {
-            if (isBottomBarVisible) {
-                NavigationBar(
-                    tonalElevation = 6.dp
-                ) {
-                    bottomNavItems.forEach { item ->
-                        val selected = currentRoute == item.route
-                        NavigationBarItem(
-                            selected = selected,
-                            onClick = {
-                                navController.navigate(item.route) {
-                                    popUpTo(navController.graph.findStartDestination().id) {
-                                        saveState = true
+    AppNavigationDrawer(
+        drawerState = drawerState,
+        scope = scope,
+        currentRoute = currentRoute,
+        currentUser = currentUser,
+        customerProfile = customerProfile,
+        wishlistCount = wishlist.size,
+        unreadNotificationsCount = unreadNotifCount,
+        hasUpdateAvailable = isUpdateAvailable,
+        themeMode = themeMode,
+        onThemeModeChanged = { tourRepository.setThemeMode(it) },
+        onNavigateToRoute = { route ->
+            navController.navigate(route) {
+                popUpTo(navController.graph.findStartDestination().id) {
+                    saveState = true
+                }
+                launchSingleTop = true
+                restoreState = true
+            }
+        },
+        onSignIn = {
+            navController.navigate(Screen.Auth.route)
+        },
+        onSignOut = {
+            authRepository.logOut()
+            navController.navigate(Screen.Home.route) {
+                popUpTo(Screen.Home.route) { inclusive = true }
+            }
+        }
+    ) {
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            contentWindowInsets = WindowInsets.navigationBars,
+            snackbarHost = { SnackbarHost(snackbarHostState) },
+            bottomBar = {
+                if (isBottomBarVisible) {
+                    NavigationBar(
+                        tonalElevation = 6.dp
+                    ) {
+                        bottomNavItems.forEach { item ->
+                            val selected = currentRoute == item.route
+                            NavigationBarItem(
+                                selected = selected,
+                                onClick = {
+                                    navController.navigate(item.route) {
+                                        popUpTo(navController.graph.findStartDestination().id) {
+                                            saveState = true
+                                        }
+                                        launchSingleTop = true
+                                        restoreState = true
                                     }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            },
-                            icon = {
-                                Icon(
-                                    imageVector = if (selected) item.selectedIcon else item.unselectedIcon,
-                                    contentDescription = item.title
-                                )
-                            },
-                            label = {
-                                Text(
-                                    text = item.title,
-                                    fontSize = 11.sp
-                                )
-                            },
-                            modifier = Modifier.testTag("nav_${item.title.lowercase().replace(" ", "_")}")
-                        )
+                                },
+                                icon = {
+                                    Icon(
+                                        imageVector = if (selected) item.selectedIcon else item.unselectedIcon,
+                                        contentDescription = item.title
+                                    )
+                                },
+                                label = {
+                                    Text(
+                                        text = item.title,
+                                        fontSize = 11.sp
+                                    )
+                                },
+                                modifier = Modifier.testTag("nav_${item.title.lowercase().replace(" ", "_")}")
+                            )
+                        }
                     }
                 }
             }
-        }
-    ) { innerPadding ->
-        NavHost(
-            navController = navController,
-            startDestination = Screen.Home.route,
-            modifier = Modifier.padding(bottom = innerPadding.calculateBottomPadding())
-        ) {
-            // 1. HOME SCREEN
-            composable(Screen.Home.route) {
-                HomeScreen(
-                    repository = tourRepository,
-                    onNavigateToDestination = { destId ->
-                        navController.navigate(Screen.DestinationDetail.createRoute(destId))
-                    },
-                    onNavigateToAgency = { agencyId ->
-                        navController.navigate(Screen.AgencyDetail.createRoute(agencyId))
-                    },
-                    onNavigateToPackage = { pkgId ->
-                        navController.navigate(Screen.PackageDetail.createRoute(pkgId))
-                    },
-                    onNavigateToProfile = {
-                        navController.navigate(Screen.Profile.route)
-                    },
-                    onNavigateToCompare = {
-                        navController.navigate(Screen.Compare.route)
-                    },
-                    onNavigateToWishlist = {
-                        navController.navigate(Screen.Wishlist.route)
-                    },
-                    onNavigateToNotifications = {
-                        navController.navigate(Screen.Notifications.route)
-                    }
-                )
-            }
+        ) { innerPadding ->
+            NavHost(
+                navController = navController,
+                startDestination = Screen.Home.route,
+                modifier = Modifier.padding(bottom = innerPadding.calculateBottomPadding())
+            ) {
+                // 1. HOME SCREEN
+                composable(Screen.Home.route) {
+                    HomeScreen(
+                        repository = tourRepository,
+                        onNavigateToDestination = { destId ->
+                            navController.navigate(Screen.DestinationDetail.createRoute(destId))
+                        },
+                        onNavigateToAgency = { agencyId ->
+                            navController.navigate(Screen.AgencyDetail.createRoute(agencyId))
+                        },
+                        onNavigateToPackage = { pkgId ->
+                            navController.navigate(Screen.PackageDetail.createRoute(pkgId))
+                        },
+                        onNavigateToProfile = {
+                            navController.navigate(Screen.Profile.route)
+                        },
+                        onNavigateToCompare = {
+                            navController.navigate(Screen.Compare.route)
+                        },
+                        onNavigateToWishlist = {
+                            navController.navigate(Screen.Wishlist.route)
+                        },
+                        onNavigateToNotifications = {
+                            navController.navigate(Screen.Notifications.route)
+                        },
+                        onOpenDrawer = {
+                            scope.launch { drawerState.open() }
+                        }
+                    )
+                }
 
             // 2. DESTINATION DETAIL SCREEN
             composable(
@@ -230,6 +333,12 @@ fun TourManageApp(
                     },
                     onNavigateToHome = {
                         navController.navigate(Screen.Home.route)
+                    },
+                    onNavigateToDestination = { destId ->
+                        navController.navigate(Screen.DestinationDetail.createRoute(destId))
+                    },
+                    onNavigateToPackage = { pkgId ->
+                        navController.navigate(Screen.PackageDetail.createRoute(pkgId))
                     }
                 )
             }
@@ -401,6 +510,16 @@ fun TourManageApp(
                     }
                 )
             }
+
+            // 15. UPDATE SCREEN
+            composable(Screen.Update.route) {
+                UpdateScreen(
+                    updateManager = updateManager,
+                    onNavigateBack = { navController.popBackStack() }
+                )
+            }
         }
     }
 }
+}
+
